@@ -4,21 +4,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from shapely.geometry import Polygon, box
-from shapely.affinity import translate
+from shapely.affinity import translate, rotate
 import io
 from PIL import Image
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
 st.title("📐 Footwear Material Yield & Layout Visualizer (ProCost Style)")
-st.caption("Simulasi Penataan Pola (Nesting) & Calculations Real Waste Material")
+st.caption("Simulasi Penataan Pola (Nesting Multi-Pattern) & Real Material Yield")
 
 # --- SIDEBAR PARAMETER SHEET ---
-st.sidebar.header("⚙️️ Parameter Lembaran Material")
+st.sidebar.header("⚙️ Parameter Lembaran Material")
 sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value=140.0, step=5.0)
 sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
 margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, step=0.5)
 inter_gap = st.sidebar.number_input("Jarak Antar Pola / Interlacing Gap (cm)", value=0.5, step=0.1)
+target_pairs = st.sidebar.number_input("Jumlah Pasang Diproduksi (Pairs)", value=10, min_value=1, step=1)
 
 # --- FUNGSI OPENCV UNTUK AMBIL POLYGON POLA ---
 def extract_polygons_from_image(uploaded_file, dpi=96):
@@ -60,29 +61,44 @@ def extract_polygons_from_image(uploaded_file, dpi=96):
 
     return extracted_polygons
 
-# --- ALGORITMA SIMULASI NESTING ---
-def run_nesting_simulation(polygons, sheet_w, sheet_l, margin_cm, gap_cm):
+# --- ALGORITMA SIMULASI NESTING (DENGAN DUPLIKASI & FILLING) ---
+def run_full_nesting_simulation(polygons, sheet_w, sheet_l, margin_cm, gap_cm, total_pairs):
     placed_polygons = []
     total_pattern_area = 0.0
     
+    # Buat daftar pola yang harus dipasang (Pola x Jumlah Pairs)
+    pattern_pool = []
+    for pair in range(total_pairs):
+        for idx, poly in enumerate(polygons):
+            pattern_pool.append((poly, idx))
+
     curr_x = margin_cm
     curr_y = margin_cm
     row_max_h = 0.0
 
-    for idx, poly in enumerate(polygons):
-        poly_w = poly.bounds[2] - poly.bounds[0]
-        poly_h = poly.bounds[3] - poly.bounds[1]
+    for item_idx, (poly, orig_idx) in enumerate(pattern_pool):
+        # Coba rotasi paling optimal sederhana (0 deg atau 180 deg untuk interlock)
+        best_poly = poly
+        if item_idx % 2 == 1:
+            best_poly = rotate(poly, 180, origin='center')
+            minx, miny, _, _ = best_poly.bounds
+            best_poly = translate(best_poly, xoff=-minx, yoff=-miny)
 
+        poly_w = best_poly.bounds[2] - best_poly.bounds[0]
+        poly_h = best_poly.bounds[3] - best_poly.bounds[1]
+
+        # Pindah ke baris baru jika menabrak batas kanan
         if curr_x + poly_w > (sheet_w - margin_cm):
             curr_x = margin_cm
             curr_y += row_max_h + gap_cm
             row_max_h = 0.0
 
+        # Berhenti jika kain sudah penuh sampai bawah
         if curr_y + poly_h > (sheet_l - margin_cm):
             break
 
-        placed_poly = translate(poly, xoff=curr_x, yoff=curr_y)
-        placed_polygons.append((placed_poly, idx))
+        placed_poly = translate(best_poly, xoff=curr_x, yoff=curr_y)
+        placed_polygons.append((placed_poly, orig_idx))
         
         total_pattern_area += placed_poly.area
         curr_x += poly_w + gap_cm
@@ -102,8 +118,8 @@ if uploaded_file is not None:
             if not raw_polygons:
                 st.error("Gagal mendeteksi bentuk pola dari gambar. Pastikan kontur garis pola jelas.")
             else:
-                placed, net_area = run_nesting_simulation(
-                    raw_polygons, sheet_width, sheet_length, margin, inter_gap
+                placed, net_area = run_full_nesting_simulation(
+                    raw_polygons, sheet_width, sheet_length, margin, inter_gap, target_pairs
                 )
                 
                 total_sheet_area = sheet_width * sheet_length
@@ -111,7 +127,7 @@ if uploaded_file is not None:
                 total_waste = 100.0 - gross_yield
 
                 col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Komponen Terpasang", f"{len(placed)} pcs")
+                col1.metric("Total Komponen Terpasang", f"{len(placed)} pcs")
                 col2.metric("Total Net Area", f"{net_area:.1f} cm²")
                 col3.metric("Material Yield", f"{gross_yield:.2f} %")
                 col4.metric("Real Cutting Waste", f"{total_waste:.2f} %")
@@ -119,13 +135,13 @@ if uploaded_file is not None:
                 st.markdown("---")
                 st.subheader("🖼️ ProCost-Style Layout Nesting Result")
 
-                fig, ax = plt.subplots(figsize=(12, 8))
+                fig, ax = plt.subplots(figsize=(14, 7))
                 
-                sheet_rect = patches.Rectangle((0, 0), sheet_width, sheet_length, linewidth=2, edgecolor='black', facecolor='#F5F5F5')
+                sheet_rect = patches.Rectangle((0, 0), sheet_width, sheet_length, linewidth=2, edgecolor='black', facecolor='#F8F9FA')
                 ax.add_patch(sheet_rect)
                 
                 margin_rect = patches.Rectangle((margin, margin), sheet_width - (2*margin), sheet_length - (2*margin), 
-                                                linewidth=1, edgecolor='red', linestyle='--', facecolor='none', label='Margin Limit')
+                                                linewidth=1, edgecolor='red', linestyle='--', facecolor='none')
                 ax.add_patch(margin_rect)
 
                 colors = plt.cm.Set3(np.linspace(0, 1, max(len(raw_polygons), 1)))
@@ -133,15 +149,12 @@ if uploaded_file is not None:
                 for poly, orig_idx in placed:
                     x, y = poly.exterior.xy
                     c = colors[orig_idx % len(colors)]
-                    ax.fill(x, y, alpha=0.8, fc=c, ec='black', linewidth=1.2)
-                    
-                    centroid = poly.centroid
-                    ax.text(centroid.x, centroid.y, f"P{orig_idx+1}", fontsize=8, ha='center', va='center', weight='bold')
+                    ax.fill(x, y, alpha=0.85, fc=c, ec='black', linewidth=1)
 
                 ax.set_xlim(-5, sheet_width + 5)
                 ax.set_ylim(-5, sheet_length + 5)
                 ax.set_aspect('equal')
-                plt.title(f"Visual Optimization Layout (Sheet: {sheet_width}x{sheet_length} cm) | Yield: {gross_yield:.1f}%", fontsize=12)
+                plt.title(f"Optimization Layout (Sheet: {sheet_width}x{sheet_length} cm) | Yield: {gross_yield:.1f}%", fontsize=12)
                 plt.xlabel("Width (cm)")
                 plt.ylabel("Length (cm)")
                 
