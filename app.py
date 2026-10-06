@@ -8,10 +8,10 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("📐 Footwear Material Yield Visualizer (Visual Interlock Master)")
-st.caption("Atur Posisi & Rotasi Interlock Master (2 Pcs) -> Generate Full Sheet Nesting ProCost")
+st.title("📐 Footwear Material Yield Visualizer (ProCost Dual-Master Control)")
+st.caption("Atur Rotasi & Posisi X-Y untuk Kedua Komponen -> Generate Full Sheet Nesting ProCost")
 
-# --- SIDEBAR PARAMETER SHEET ---
+# --- SIDEBAR PARAMETER SHEET & NESTING MODE ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
 sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value=140.0, step=5.0)
 sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
@@ -89,53 +89,68 @@ if uploaded_file is not None:
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Interlock Master Builder (2 Pcs)")
-        st.caption("Geser posisi X, Y dan Sudut Rotasi Komponen 2 hingga masuk rapat ke celah Komponen 1 tanpa bertabrakan.")
+        st.subheader("🛠️ Step 1: Adjust Dual-Component Master Interlock Pair")
+        st.caption("Atur sudut rotasi serta pergeseran X dan Y untuk KEDUA komponen secara mandiri.")
 
-        col_ctrl, col_view = st.columns([1, 1.2])
+        col_c1, col_c2, col_preview = st.columns([1, 1, 1.2])
 
-        with col_ctrl:
-            st.markdown("### 🎛️ Pengaturan Posisi Komponen 2")
-            rot_deg = st.slider("🔄 Rotasi Sudut (°)", 0, 360, 180, step=5)
-            shift_x = st.slider("↔️ Pergeseran Horizontal X (cm)", -float(bw), float(bw * 1.5), float(bw * 0.35), step=0.1)
-            shift_y = st.slider("↕️ Pergeseran Vertikal Y (cm)", -float(bh), float(bh * 1.5), float(bh * 0.5), step=0.1)
+        # --- KONTROL KOMPONEN 1 ---
+        with col_c1:
+            st.markdown("### 🔵 Komponen 1 (Biru)")
+            rot1 = st.slider("Rotasi Pcs 1 (°)", 0, 360, 0, step=5, key="rot1")
+            shift_x1 = st.slider("Geser X Pcs 1 (cm)", -float(bw), float(bw * 1.5), 0.0, step=0.1, key="sx1")
+            shift_y1 = st.slider("Geser Y Pcs 1 (cm)", -float(bh), float(bh * 1.5), 0.0, step=0.1, key="sy1")
 
-            # Buat geometri Komponen 2 berdasarkan posisi interlock
-            p2_rot = rotate(base_poly, rot_deg, origin='center')
-            minx, miny, _, _ = p2_rot.bounds
-            p2_zero = translate(p2_rot, xoff=-minx, yoff=-miny)
-            poly2_custom = translate(p2_zero, xoff=shift_x, yoff=shift_y)
+            # Transformasi Komponen 1
+            p1_rot = rotate(base_poly, rot1, origin='center')
+            minx1, miny1, _, _ = p1_rot.bounds
+            p1_zero = translate(p1_rot, xoff=-minx1, yoff=-miny1)
+            poly1_custom = translate(p1_zero, xoff=shift_x1, yoff=shift_y1)
 
-            # Deteksi Overlap/Tabrakan
-            has_overlap = base_poly.intersects(poly2_custom)
-            if has_overlap:
-                st.error("❌ Status: Posisi Bertabrakan (Overlap)! Geser komponen agar tidak bertumpuk.")
-            else:
-                st.success("✅ Status: Interlock Pasangan Aman & Presisi (Siap Di-nesting)!")
+        # --- KONTROL KOMPONEN 2 ---
+        with col_c2:
+            st.markdown("### 🔴 Komponen 2 (Merah)")
+            rot2 = st.slider("Rotasi Pcs 2 (°)", 0, 360, 180, step=5, key="rot2")
+            shift_x2 = st.slider("Geser X Pcs 2 (cm)", -float(bw), float(bw * 1.5), float(bw * 0.4), step=0.1, key="sx2")
+            shift_y2 = st.slider("Geser Y Pcs 2 (cm)", -float(bh), float(bh * 1.5), float(bh * 0.5), step=0.1, key="sy2")
 
-        with col_view:
-            # Render Visual Preview Pasangan Master
+            # Transformasi Komponen 2
+            p2_rot = rotate(base_poly, rot2, origin='center')
+            minx2, miny2, _, _ = p2_rot.bounds
+            p2_zero = translate(p2_rot, xoff=-minx2, yoff=-miny2)
+            poly2_custom = translate(p2_zero, xoff=shift_x2, yoff=shift_y2)
+
+        # STATUS OVERLAP DETEKTOR
+        has_overlap = poly1_custom.intersects(poly2_custom)
+        if has_overlap:
+            st.error("❌ Peringatan: Komponen 1 dan Komponen 2 saling bertabrakan (overlap)!")
+        else:
+            st.success("✅ Status: Interlock Pasangan Aman & Valid (Tidak bertabrakan).")
+
+        # --- VISUAL PREVIEW PASANGAN MASTER ---
+        with col_preview:
             fig_p, ax_p = plt.subplots(figsize=(6, 6))
-            x1, y1 = base_poly.exterior.xy
+            x1, y1 = poly1_custom.exterior.xy
             x2, y2 = poly2_custom.exterior.xy
 
-            ax_p.fill(x1, y1, alpha=0.75, fc='#3388ff', ec='black', linewidth=1.5, label='Pcs 1 (Utama)')
-            ax_p.fill(x2, y2, alpha=0.75, fc='#ff4444', ec='black', linewidth=1.5, label='Pcs 2 (Interlock)')
+            ax_p.fill(x1, y1, alpha=0.75, fc='#3388ff', ec='black', linewidth=1.5, label='Komponen 1')
+            ax_p.fill(x2, y2, alpha=0.75, fc='#ff4444', ec='black', linewidth=1.5, label='Komponen 2')
             ax_p.set_aspect('equal')
             ax_p.legend(loc='upper right')
-            plt.title("Visual Master Interlock Pair Preview", fontsize=11)
+            plt.title("Master Interlock Pair Preview", fontsize=11)
             st.pyplot(fig_p)
 
-        # Hitung Bounding Box Pasangan Master
-        p_minx = min(base_poly.bounds[0], poly2_custom.bounds[0])
-        p_miny = min(base_poly.bounds[1], poly2_custom.bounds[1])
-        p_maxx = max(base_poly.bounds[2], poly2_custom.bounds[2])
-        p_maxy = max(base_poly.bounds[3], poly2_custom.bounds[3])
+        # Hitung Bounding Box Gabungan Pasangan Master
+        p_minx = min(poly1_custom.bounds[0], poly2_custom.bounds[0])
+        p_miny = min(poly1_custom.bounds[1], poly2_custom.bounds[1])
+        p_maxx = max(poly1_custom.bounds[2], poly2_custom.bounds[2])
+        p_maxy = max(poly1_custom.bounds[3], poly2_custom.bounds[3])
 
         pair_w = p_maxx - p_minx
         pair_h = p_maxy - p_miny
 
-        poly1_unit = translate(base_poly, xoff=-p_minx, yoff=-p_miny)
+        # Reset koordinat pasangan agar nol di kiri-bawah (0,0)
+        poly1_unit = translate(poly1_custom, xoff=-p_minx, yoff=-p_miny)
         poly2_unit = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
 
         st.markdown("---")
@@ -148,7 +163,7 @@ if uploaded_file is not None:
             total_items = target_pairs * 2
             item_idx = 0
 
-            # GENERATE LAYOUT BERDASARKAN PAIR MASTER
+            # GENERATE LAYOUT BERDASARKAN HASIL DUAL-CONTROL PAIR USER
             if "ROWs" in nesting_mode:
                 curr_y = margin
                 while item_idx < total_items and (curr_y + pair_h) <= (sheet_length - margin):
