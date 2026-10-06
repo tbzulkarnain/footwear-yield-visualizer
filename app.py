@@ -8,8 +8,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("📐 Footwear Material Yield & Layout Visualizer (ProCost Modes)")
-st.caption("Simulasi Nesting Industri Sepatu (I-ROWs, P-ROWs, IP-ROWs, I-COLs, P-COLs, IP-COLs)")
+st.title("📐 Footwear Material Yield & Layout Visualizer (ProCost Precision)")
+st.caption("Simulasi True Collision-Free Interlock Nesting (I-ROWs, P-ROWs, IP-ROWs, I-COLs, P-COLs, IP-COLs)")
 
 # --- SIDEBAR PARAMETER SHEET & NESTING MODE ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -77,6 +77,43 @@ def extract_polygons_from_image(uploaded_file, dpi=96):
         st.error(f"Error pembacaan gambar: {e}")
         return []
 
+# --- HELPER: FINDS EXACT INTERLOCK POSITION WITHOUT OVERLAP ---
+def find_optimal_interlock_position(base_poly, target_poly_180, gap_cm, is_horizontal_component):
+    base_w = base_poly.bounds[2] - base_poly.bounds[0]
+    base_h = base_poly.bounds[3] - base_poly.bounds[1]
+    
+    t_w = target_poly_180.bounds[2] - target_poly_180.bounds[0]
+    t_h = target_poly_180.bounds[3] - target_poly_180.bounds[1]
+    
+    # Cari offset awal berdasarkan kategori komponen
+    if is_horizontal_component:
+        # Komponen Horisontal (vamp/tongue): geser X ke tengah, rapatkan Y dari atas
+        start_dx = base_w * 0.35
+        best_p = None
+        for dy in np.arange(base_h, 0.0, -0.2):
+            test_p = translate(target_poly_180, xoff=start_dx, yoff=dy)
+            # Cek jika tidak tabrakan (dengan toleransi gap)
+            if not test_p.buffer(gap_cm / 2).intersects(base_poly):
+                best_p = test_p
+            else:
+                break
+        if best_p is None:
+            best_p = translate(target_poly_180, xoff=start_dx, yoff=base_h + gap_cm)
+        return best_p
+    else:
+        # Komponen Vertikal (eyestay/counter): geser Y ke tengah, rapatkan X dari kanan
+        start_dy = base_h * 0.35
+        best_p = None
+        for dx in np.arange(base_w, 0.0, -0.2):
+            test_p = translate(target_poly_180, xoff=dx, yoff=start_dy)
+            if not test_p.buffer(gap_cm / 2).intersects(base_poly):
+                best_p = test_p
+            else:
+                break
+        if best_p is None:
+            best_p = translate(target_poly_180, xoff=base_w + gap_cm, yoff=start_dy)
+        return best_p
+
 # --- ALGORITMA NESTING MODULAR PROCOST ---
 def run_procost_nesting(polygons, sheet_w, sheet_l, margin_cm, gap_cm, mode, total_pairs):
     placed_polygons = []
@@ -91,89 +128,87 @@ def run_procost_nesting(polygons, sheet_w, sheet_l, margin_cm, gap_cm, mode, tot
         return [], 0.0
 
     ref_poly = pattern_pool[0][0]
-    poly_w = ref_poly.bounds[2] - ref_poly.bounds[0]
-    poly_h = ref_poly.bounds[3] - ref_poly.bounds[1]
+    ref_w = ref_poly.bounds[2] - ref_poly.bounds[0]
+    ref_h = ref_poly.bounds[3] - ref_poly.bounds[1]
+    
+    # Deteksi otomatis kategori komponen (Horizontal vs Vertikal)
+    is_horizontal_component = ref_w >= ref_h
 
     item_idx = 0
     total_items = len(pattern_pool)
 
-    # 1. MODE INTERLOCK PAIRS - ROWs (IP - ROWs)
-    if "IP - ROWs" in mode:
-        shift_x = poly_w * 0.45
-        shift_y = poly_h * 0.65
-        curr_y = margin_cm
+    # 1. MODE IP - ROWs & IP - COLUMNs (PAIRS INTERLOCK ANTI TABRAKAN)
+    if "IP - ROWs" in mode or "IP - COLUMNs" in mode:
+        # Buat unit pasangan (Pair Block) bebas tabrakan di origin (0,0)
+        poly_a = ref_poly
+        p_rot = rotate(poly_a, 180, origin='center')
+        minx, miny, _, _ = p_rot.bounds
+        poly_b_rot = translate(p_rot, xoff=-minx, yoff=-miny)
 
-        while item_idx < total_items and (curr_y + poly_h) <= (sheet_l - margin_cm):
-            curr_x = margin_cm
-            while item_idx < total_items and (curr_x + poly_w) <= (sheet_w - margin_cm):
-                # Pola 1 (0 deg)
-                poly1, orig_idx1 = pattern_pool[item_idx]
-                p1 = translate(poly1, xoff=curr_x, yoff=curr_y)
-                placed_polygons.append((p1, orig_idx1))
-                total_pattern_area += p1.area
-                item_idx += 1
+        poly_b_placed = find_optimal_interlock_position(poly_a, poly_b_rot, gap_cm, is_horizontal_component)
 
-                # Pola 2 (180 deg & Interlock ke celah Pola 1)
-                if item_idx < total_items:
-                    poly2, orig_idx2 = pattern_pool[item_idx]
-                    p2_rot = rotate(poly2, 180, origin='center')
-                    minx, miny, _, _ = p2_rot.bounds
-                    p2_zero = translate(p2_rot, xoff=-minx, yoff=-miny)
-                    
-                    p2_placed = translate(p2_zero, xoff=curr_x + shift_x, yoff=curr_y + (poly_h - shift_y))
-                    
-                    if p2_placed.bounds[2] <= (sheet_w - margin_cm) and p2_placed.bounds[3] <= (sheet_l - margin_cm):
-                        placed_polygons.append((p2_placed, orig_idx2))
-                        total_pattern_area += p2_placed.area
-                        item_idx += 1
+        # Hitung bounding box unit pasangan
+        pair_minx = min(poly_a.bounds[0], poly_b_placed.bounds[0])
+        pair_miny = min(poly_a.bounds[1], poly_b_placed.bounds[1])
+        pair_maxx = max(poly_a.bounds[2], poly_b_placed.bounds[2])
+        pair_maxy = max(poly_a.bounds[3], poly_b_placed.bounds[3])
 
-                curr_x += (poly_w + shift_x + gap_cm)
-            curr_y += (shift_y + gap_cm)
+        pair_w = pair_maxx - pair_minx
+        pair_h = pair_maxy - pair_miny
 
-    # 2. MODE INTERLOCK PAIRS - COLUMNs (IP - COLUMNs)
-    elif "IP - COLUMNs" in mode:
-        shift_x = poly_w * 0.65
-        shift_y = poly_h * 0.45
-        curr_x = margin_cm
+        # Geser pasangan agar titik paling kiri-bawah di (0,0)
+        poly_a_unit = translate(poly_a, xoff=-pair_minx, yoff=-pair_miny)
+        poly_b_unit = translate(poly_b_placed, xoff=-pair_minx, yoff=-pair_miny)
 
-        while item_idx < total_items and (curr_x + poly_w) <= (sheet_w - margin_cm):
+        if "IP - ROWs" in mode:
             curr_y = margin_cm
-            while item_idx < total_items and (curr_y + poly_h) <= (sheet_l - margin_cm):
-                # Pola 1 (0 deg)
-                poly1, orig_idx1 = pattern_pool[item_idx]
-                p1 = translate(poly1, xoff=curr_x, yoff=curr_y)
-                placed_polygons.append((p1, orig_idx1))
-                total_pattern_area += p1.area
-                item_idx += 1
+            while item_idx < total_items and (curr_y + pair_h) <= (sheet_l - margin_cm):
+                curr_x = margin_cm
+                while item_idx < total_items and (curr_x + pair_w) <= (sheet_w - margin_cm):
+                    # Pasang Pola 1 dari unit pasangan
+                    p1 = translate(poly_a_unit, xoff=curr_x, yoff=curr_y)
+                    placed_polygons.append((p1, pattern_pool[item_idx][1]))
+                    total_pattern_area += p1.area
+                    item_idx += 1
 
-                # Pola 2 (180 deg & Interlock Kolom)
-                if item_idx < total_items:
-                    poly2, orig_idx2 = pattern_pool[item_idx]
-                    p2_rot = rotate(poly2, 180, origin='center')
-                    minx, miny, _, _ = p2_rot.bounds
-                    p2_zero = translate(p2_rot, xoff=-minx, yoff=-miny)
-                    
-                    p2_placed = translate(p2_zero, xoff=curr_x + (poly_w - shift_x), yoff=curr_y + shift_y)
-                    
-                    if p2_placed.bounds[2] <= (sheet_w - margin_cm) and p2_placed.bounds[3] <= (sheet_l - margin_cm):
-                        placed_polygons.append((p2_placed, orig_idx2))
-                        total_pattern_area += p2_placed.area
+                    # Pasang Pola 2 dari unit pasangan
+                    if item_idx < total_items:
+                        p2 = translate(poly_b_unit, xoff=curr_x, yoff=curr_y)
+                        placed_polygons.append((p2, pattern_pool[item_idx][1]))
+                        total_pattern_area += p2.area
                         item_idx += 1
 
-                curr_y += (poly_h + shift_y + gap_cm)
-            curr_x += (shift_x + gap_cm)
+                    curr_x += pair_w + gap_cm
+                curr_y += pair_h + gap_cm
+        else: # IP - COLUMNs
+            curr_x = margin_cm
+            while item_idx < total_items and (curr_x + pair_w) <= (sheet_w - margin_cm):
+                curr_y = margin_cm
+                while item_idx < total_items and (curr_y + pair_h) <= (sheet_l - margin_cm):
+                    p1 = translate(poly_a_unit, xoff=curr_x, yoff=curr_y)
+                    placed_polygons.append((p1, pattern_pool[item_idx][1]))
+                    total_pattern_area += p1.area
+                    item_idx += 1
 
-    # 3. MODE ROWs LAINNYA (I-ROWs & P-ROWs)
+                    if item_idx < total_items:
+                        p2 = translate(poly_b_unit, xoff=curr_x, yoff=curr_y)
+                        placed_polygons.append((p2, pattern_pool[item_idx][1]))
+                        total_pattern_area += p2.area
+                        item_idx += 1
+
+                    curr_y += pair_h + gap_cm
+                curr_x += pair_w + gap_cm
+
+    # 2. MODE ROWs LAINNYA (I-ROWs & P-ROWs)
     elif "ROWs" in mode:
         curr_y = margin_cm
         row_idx = 0
 
-        while item_idx < total_items and (curr_y + poly_h) <= (sheet_l - margin_cm):
+        while item_idx < total_items and (curr_y + ref_h) <= (sheet_l - margin_cm):
             row_rot = 180 if ("I - ROWs" in mode and row_idx % 2 == 1) else 0
-            y_overlap = 0.82 if ("I - ROWs" in mode and row_idx > 0) else 1.0
 
             curr_x = margin_cm
-            while item_idx < total_items and (curr_x + poly_w) <= (sheet_w - margin_cm):
+            while item_idx < total_items and (curr_x + ref_w) <= (sheet_w - margin_cm):
                 poly, orig_idx = pattern_pool[item_idx]
 
                 p_rot = rotate(poly, row_rot, origin='center')
@@ -185,22 +220,21 @@ def run_procost_nesting(polygons, sheet_w, sheet_l, margin_cm, gap_cm, mode, tot
                 total_pattern_area += placed_p.area
 
                 item_idx += 1
-                curr_x += poly_w + gap_cm
+                curr_x += ref_w + gap_cm
 
             row_idx += 1
-            curr_y += (poly_h * y_overlap) + gap_cm
+            curr_y += ref_h + gap_cm
 
-    # 4. MODE COLUMNs LAINNYA (I-COLUMNs & P-COLUMNs)
+    # 3. MODE COLUMNs LAINNYA (I-COLUMNs & P-COLUMNs)
     else:
         curr_x = margin_cm
         col_idx = 0
 
-        while item_idx < total_items and (curr_x + poly_w) <= (sheet_w - margin_cm):
+        while item_idx < total_items and (curr_x + ref_w) <= (sheet_w - margin_cm):
             col_rot = 180 if ("I - COLUMNs" in mode and col_idx % 2 == 1) else 0
-            x_overlap = 0.82 if ("I - COLUMNs" in mode and col_idx > 0) else 1.0
 
             curr_y = margin_cm
-            while item_idx < total_items and (curr_y + poly_h) <= (sheet_l - margin_cm):
+            while item_idx < total_items and (curr_y + ref_h) <= (sheet_l - margin_cm):
                 poly, orig_idx = pattern_pool[item_idx]
 
                 p_rot = rotate(poly, col_rot, origin='center')
@@ -212,10 +246,10 @@ def run_procost_nesting(polygons, sheet_w, sheet_l, margin_cm, gap_cm, mode, tot
                 total_pattern_area += placed_p.area
 
                 item_idx += 1
-                curr_y += poly_h + gap_cm
+                curr_y += ref_h + gap_cm
 
             col_idx += 1
-            curr_x += (poly_w * x_overlap) + gap_cm
+            curr_x += ref_w + gap_cm
 
     return placed_polygons, total_pattern_area
 
