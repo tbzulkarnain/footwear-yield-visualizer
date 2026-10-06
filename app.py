@@ -10,8 +10,8 @@ from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("📐 Footwear Material Yield Visualizer (Visual Interlock Editor)")
-st.caption("Drag & Rotate Komponen 2 secara Visual untuk Membuat Master Interlock Pair")
+st.title("📐 Footwear Material Yield Visualizer (Drag & Drop Canvas)")
+st.caption("Klik, Geser (Drag), dan Putar Komponen 2 Langsung di Atas Kanvas untuk Membuat Master Interlock Pair")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -91,42 +91,90 @@ if uploaded_file is not None:
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Drag & Adjust Interlock Pair (Visual Editor)")
-        st.caption("Gunakan slider untuk mengatur posisi & rotasi Komponen 2 secara presisi hingga mengunci ke Komponen 1.")
+        st.subheader("🛠️ Step 1: Drag & Position Component 2 Directly on Canvas")
+        st.caption("Klik objek komponen merah di kanvas untuk menggeser (*drag*) atau memutarnya hingga masuk rapat ke celah komponen biru.")
 
-        col1, col2 = st.columns([1, 1])
+        col_rot, col_status = st.columns([1, 1])
+        with col_rot:
+            rot_angle = st.slider("Rotasi Komponen 2 Sebelum Di-drag (°)", 0, 360, 180, step=15)
 
-        with col1:
-            st.markdown("**Pengaturan Posisi & Rotasi Komponen 2**")
-            rot_deg = st.slider("Rotasi Angle (°)", 0, 360, 180, step=5)
-            shift_x = st.slider("Geser Horizontal X (cm)", -float(bw), float(bw * 1.5), float(bw * 0.4), step=0.1)
-            shift_y = st.slider("Geser Vertikal Y (cm)", -float(bh), float(bh * 1.5), float(bh * 0.5), step=0.1)
+        # Siapkan poligon komponen 2 dengan rotasi pilihan
+        p2_rot = rotate(base_poly, rot_angle, origin='center')
+        minx, miny, _, _ = p2_rot.bounds
+        p2_zero = translate(p2_rot, xoff=-minx, yoff=-miny)
 
-            # Buat geometri Komponen 2
-            p2_rot = rotate(base_poly, rot_deg, origin='center')
-            minx, miny, _, _ = p2_rot.bounds
-            p2_zero = translate(p2_rot, xoff=-minx, yoff=-miny)
-            poly2_custom = translate(p2_zero, xoff=shift_x, yoff=shift_y)
+        # Buat gambar latar belakang kanvas (Komponen 1 Fixed di koordinat awal)
+        canvas_w_px = 600
+        canvas_h_px = 500
+        scale_factor = 15.0 # 1 cm = 15 piksel di kanvas
 
-            # Status Overlap Check
-            has_overlap = base_poly.intersects(poly2_custom)
+        bg_img = Image.new("RGBA", (canvas_w_px, canvas_h_px), (245, 247, 250, 255))
+        draw = ImageDraw.Draw(bg_img)
+
+        # Gambar Komponen 1 (Fixed)
+        pts1 = [(pt[0] * scale_factor + 50, pt[1] * scale_factor + 50) for pt in base_poly.exterior.coords]
+        draw.polygon(pts1, fill=(51, 136, 255, 180), outline="black")
+
+        # Inisialisasi posisi awal Komponen 2 di kanvas (dapat di-drag)
+        pts2_init = [(pt[0] * scale_factor + 50 + (bw * scale_factor * 0.5), pt[1] * scale_factor + 50 + (bh * scale_factor * 0.5)) for pt in p2_zero.exterior.coords]
+        
+        initial_drawing = {
+            "version": "4.4.0",
+            "objects": [
+                {
+                    "type": "polygon",
+                    "version": "4.4.0",
+                    "originX": "left",
+                    "originY": "top",
+                    "left": 50 + (bw * scale_factor * 0.5),
+                    "top": 50 + (bh * scale_factor * 0.5),
+                    "width": bw * scale_factor,
+                    "height": bh * scale_factor,
+                    "fill": "rgba(255, 68, 68, 0.7)",
+                    "stroke": "black",
+                    "strokeWidth": 1,
+                    "points": [{"x": pt[0] * scale_factor, "y": pt[1] * scale_factor} for pt in p2_zero.exterior.coords]
+                }
+            ]
+        }
+
+        # TAMPILKAN KANVAS INTERAKTIF (DRAG & DROP)
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 68, 68, 0.7)",
+            stroke_width=1,
+            background_image=bg_img,
+            initial_drawing=initial_drawing,
+            update_streamlit=True,
+            height=canvas_h_px,
+            width=canvas_w_px,
+            drawing_mode="transform", # Mode transform memungkinkan drag, scaling, dan rotasi
+            key="interlock_canvas",
+        )
+
+        # TANGKAP POSISI HASIL DRAG USER DARI KANVAS
+        shift_x_cm = (bw * 0.5)
+        shift_y_cm = (bh * 0.5)
+
+        if canvas_result.json_data is not None and "objects" in canvas_result.json_data:
+            objs = canvas_result.json_data["objects"]
+            if len(objs) > 0:
+                dragged_obj = objs[0]
+                left_px = dragged_obj.get("left", 50)
+                top_px = dragged_obj.get("top", 50)
+                
+                # Konversi piksel kanvas kembali ke centimeter
+                shift_x_cm = (left_px - 50) / scale_factor
+                shift_y_cm = (top_px - 50) / scale_factor
+
+        poly2_custom = translate(p2_zero, xoff=shift_x_cm, yoff=shift_y_cm)
+
+        # STATUS DETEKSI TABRAKAN
+        has_overlap = base_poly.intersects(poly2_custom)
+        with col_status:
             if has_overlap:
-                st.error("❌ Peringatan: Posisi komponen bertabrakan (overlap)!")
+                st.error("❌ Status: Posisi bertabrakan (*overlap*)! Geser sedikit lagi.")
             else:
-                st.success("✅ Master Interlock Valid (Tidak bertabrakan).")
-
-        with col2:
-            # Preview Canvas Interaktif
-            fig_p, ax_p = plt.subplots(figsize=(6, 6))
-            x1, y1 = base_poly.exterior.xy
-            x2, y2 = poly2_custom.exterior.xy
-
-            ax_p.fill(x1, y1, alpha=0.75, fc='#3388ff', ec='black', linewidth=1.5, label='Pcs 1 (Utama)')
-            ax_p.fill(x2, y2, alpha=0.75, fc='#ff4444', ec='black', linewidth=1.5, label='Pcs 2 (Interlock)')
-            ax_p.set_aspect('equal')
-            ax_p.legend(loc='upper right')
-            plt.title("Visual Master Interlock Unit", fontsize=11)
-            st.pyplot(fig_p)
+                st.success("✅ Status: Interlock Pasangan Aman & Presisi!")
 
         # Hitung Bounding Box Pasangan Master
         p_minx = min(base_poly.bounds[0], poly2_custom.bounds[0])
@@ -150,7 +198,7 @@ if uploaded_file is not None:
             total_items = target_pairs * 2
             item_idx = 0
 
-            # GENERATE LAYOUT BERDASARKAN MASTER PAIR USER
+            # GENERATE LAYOUT BERDASARKAN HASIL DRAG & DROP USER
             if "ROWs" in nesting_mode:
                 curr_y = margin
                 while item_idx < total_items and (curr_y + pair_h) <= (sheet_length - margin):
@@ -232,7 +280,7 @@ if uploaded_file is not None:
             ax.set_xlim(-5, sheet_width + 5)
             ax.set_ylim(-5, sheet_length + 5)
             ax.set_aspect('equal')
-            plt.title(f"Custom Interlock Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
+            plt.title(f"Custom Interactive Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
             plt.xlabel("Width (cm)")
             plt.ylabel("Length (cm)")
             
