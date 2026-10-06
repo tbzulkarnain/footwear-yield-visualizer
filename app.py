@@ -8,8 +8,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("📐 Footwear Material Yield Visualizer (ProCost Dual-Master Control)")
-st.caption("Atur Rotasi & Posisi X-Y untuk Kedua Komponen -> Generate Full Sheet Nesting ProCost")
+st.title("📐 Footwear Material Yield Visualizer (ProCost Dual-Master & Row Interlock)")
+st.caption("Atur Master Pair (Step 1) -> Presisikan Jarak Antar-Baris (Step 2) -> Generate Nesting")
 
 # --- SIDEBAR PARAMETER SHEET & NESTING MODE ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -88,46 +88,43 @@ if uploaded_file is not None:
         bw = base_poly.bounds[2] - base_poly.bounds[0]
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
+        # ==========================================
+        # STEP 1: DUAL-COMPONENT MASTER BUILDER
+        # ==========================================
         st.markdown("---")
         st.subheader("🛠️ Step 1: Adjust Dual-Component Master Interlock Pair")
-        st.caption("Atur sudut rotasi serta pergeseran X dan Y untuk KEDUA komponen secara mandiri.")
+        st.caption("Atur posisi Komponen 1 & 2 hingga membentuk 1 pasang unit yang saling mengunci.")
 
         col_c1, col_c2, col_preview = st.columns([1, 1, 1.2])
 
-        # --- KONTROL KOMPONEN 1 ---
         with col_c1:
             st.markdown("### 🔵 Komponen 1 (Biru)")
             rot1 = st.slider("Rotasi Pcs 1 (°)", 0, 360, 0, step=5, key="rot1")
             shift_x1 = st.slider("Geser X Pcs 1 (cm)", -float(bw), float(bw * 1.5), 0.0, step=0.1, key="sx1")
             shift_y1 = st.slider("Geser Y Pcs 1 (cm)", -float(bh), float(bh * 1.5), 0.0, step=0.1, key="sy1")
 
-            # Transformasi Komponen 1
             p1_rot = rotate(base_poly, rot1, origin='center')
             minx1, miny1, _, _ = p1_rot.bounds
             p1_zero = translate(p1_rot, xoff=-minx1, yoff=-miny1)
             poly1_custom = translate(p1_zero, xoff=shift_x1, yoff=shift_y1)
 
-        # --- KONTROL KOMPONEN 2 ---
         with col_c2:
             st.markdown("### 🔴 Komponen 2 (Merah)")
             rot2 = st.slider("Rotasi Pcs 2 (°)", 0, 360, 180, step=5, key="rot2")
             shift_x2 = st.slider("Geser X Pcs 2 (cm)", -float(bw), float(bw * 1.5), float(bw * 0.4), step=0.1, key="sx2")
             shift_y2 = st.slider("Geser Y Pcs 2 (cm)", -float(bh), float(bh * 1.5), float(bh * 0.5), step=0.1, key="sy2")
 
-            # Transformasi Komponen 2
             p2_rot = rotate(base_poly, rot2, origin='center')
             minx2, miny2, _, _ = p2_rot.bounds
             p2_zero = translate(p2_rot, xoff=-minx2, yoff=-miny2)
             poly2_custom = translate(p2_zero, xoff=shift_x2, yoff=shift_y2)
 
-        # STATUS OVERLAP DETEKTOR
         has_overlap = poly1_custom.intersects(poly2_custom)
         if has_overlap:
-            st.error("❌ Peringatan: Komponen 1 dan Komponen 2 saling bertabrakan (overlap)!")
+            st.error("❌ Peringatan: Komponen 1 dan Komponen 2 bertabrakan (overlap)!")
         else:
             st.success("✅ Status: Interlock Pasangan Aman & Valid (Tidak bertabrakan).")
 
-        # --- VISUAL PREVIEW PASANGAN MASTER ---
         with col_preview:
             fig_p, ax_p = plt.subplots(figsize=(6, 6))
             x1, y1 = poly1_custom.exterior.xy
@@ -140,7 +137,7 @@ if uploaded_file is not None:
             plt.title("Master Interlock Pair Preview", fontsize=11)
             st.pyplot(fig_p)
 
-        # Hitung Bounding Box Gabungan Pasangan Master
+        # Hitung Bounding Box Pasangan Master
         p_minx = min(poly1_custom.bounds[0], poly2_custom.bounds[0])
         p_miny = min(poly1_custom.bounds[1], poly2_custom.bounds[1])
         p_maxx = max(poly1_custom.bounds[2], poly2_custom.bounds[2])
@@ -149,12 +146,29 @@ if uploaded_file is not None:
         pair_w = p_maxx - p_minx
         pair_h = p_maxy - p_miny
 
-        # Reset koordinat pasangan agar nol di kiri-bawah (0,0)
         poly1_unit = translate(poly1_custom, xoff=-p_minx, yoff=-p_miny)
         poly2_unit = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
 
+        # ==========================================
+        # STEP 2: ROW INTERLOCK & FULL NESTING
+        # ==========================================
         st.markdown("---")
-        st.subheader("🚀 Step 2: Generate Full Sheet Nesting")
+        st.subheader("🚀 Step 2: Interlock Antar-Baris & Full Sheet Nesting")
+        st.caption("Atur kompresi vertikal agar baris ke-2 masuk menangkup rapat ke atas baris ke-1[cite: 5].")
+
+        col_row1, col_row2 = st.columns(2)
+        with col_row1:
+            row_y_compress = st.slider(
+                "📉 Kompresi Vertikal Antar-Baris / Row Offset (cm)", 
+                0.0, float(pair_h * 0.8), float(pair_h * 0.35), step=0.1,
+                help="Turunkan baris atas agar puncak pola masuk ke lekukan baris di bawahnya[cite: 5]."
+            )
+        with col_row2:
+            row_x_stagger = st.slider(
+                "↔️ Pergeseran Selang-Seling Baris / Staggered X Shift (cm)", 
+                0.0, float(pair_w), float(pair_w * 0.25), step=0.1,
+                help="Geser baris genap ke kanan agar posisi interlock lebih presisi."
+            )
 
         if st.button("🚀 Run Full Sheet Nesting Simulation", type="primary"):
             placed_polygons = []
@@ -162,46 +176,36 @@ if uploaded_file is not None:
 
             total_items = target_pairs * 2
             item_idx = 0
+            row_idx = 0
 
-            # GENERATE LAYOUT BERDASARKAN HASIL DUAL-CONTROL PAIR USER
-            if "ROWs" in nesting_mode:
-                curr_y = margin
-                while item_idx < total_items and (curr_y + pair_h) <= (sheet_length - margin):
-                    curr_x = margin
-                    while item_idx < total_items and (curr_x + pair_w) <= (sheet_width - margin):
-                        p1 = translate(poly1_unit, xoff=curr_x, yoff=curr_y)
-                        placed_polygons.append((p1, 0))
-                        total_pattern_area += p1.area
-                        item_idx += 1
+            # Jarak efektif vertikal setelah dirapatkan
+            effective_row_h = pair_h - row_y_compress
+            curr_y = margin
 
-                        if item_idx < total_items:
-                            p2 = translate(poly2_unit, xoff=curr_x, yoff=curr_y)
-                            placed_polygons.append((p2, 1))
-                            total_pattern_area += p2.area
-                            item_idx += 1
+            while item_idx < total_items and (curr_y + pair_h) <= (sheet_length - margin):
+                x_shift_row = row_x_stagger if (row_idx % 2 == 1) else 0.0
+                curr_x = margin + x_shift_row
 
-                        curr_x += pair_w + inter_gap
-                    curr_y += pair_h + inter_gap
-            else: # COLUMNs
-                curr_x = margin
                 while item_idx < total_items and (curr_x + pair_w) <= (sheet_width - margin):
-                    curr_y = margin
-                    while item_idx < total_items and (curr_y + pair_h) <= (sheet_length - margin):
-                        p1 = translate(poly1_unit, xoff=curr_x, yoff=curr_y)
-                        placed_polygons.append((p1, 0))
-                        total_pattern_area += p1.area
+                    # Pcs 1
+                    p1 = translate(poly1_unit, xoff=curr_x, yoff=curr_y)
+                    placed_polygons.append((p1, 0))
+                    total_pattern_area += p1.area
+                    item_idx += 1
+
+                    # Pcs 2
+                    if item_idx < total_items:
+                        p2 = translate(poly2_unit, xoff=curr_x, yoff=curr_y)
+                        placed_polygons.append((p2, 1))
+                        total_pattern_area += p2.area
                         item_idx += 1
 
-                        if item_idx < total_items:
-                            p2 = translate(poly2_unit, xoff=curr_x, yoff=curr_y)
-                            placed_polygons.append((p2, 1))
-                            total_pattern_area += p2.area
-                            item_idx += 1
-
-                        curr_y += pair_h + inter_gap
                     curr_x += pair_w + inter_gap
 
-            # METRIK KALKULASI PROCOST
+                row_idx += 1
+                curr_y += effective_row_h + inter_gap
+
+            # METRIK PROCOST
             total_sheet_area = sheet_width * sheet_length
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
             used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
@@ -223,7 +227,7 @@ if uploaded_file is not None:
 
             st.info(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
-            # VISUALISASI HASIL LEMBARAN MATERIAL
+            # HASIL VISUAL
             fig, ax = plt.subplots(figsize=(14, 8))
             
             sheet_rect = patches.Rectangle((0, 0), sheet_width, sheet_length, linewidth=2, edgecolor='black', facecolor='#F8F9FA')
@@ -245,7 +249,7 @@ if uploaded_file is not None:
             ax.set_xlim(-5, sheet_width + 5)
             ax.set_ylim(-5, sheet_length + 5)
             ax.set_aspect('equal')
-            plt.title(f"Custom Interlock Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
+            plt.title(f"Interlock Row Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
             plt.xlabel("Width (cm)")
             plt.ylabel("Length (cm)")
             
