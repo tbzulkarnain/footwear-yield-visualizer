@@ -4,3 +4,5 @@ numpy
 matplotlib
 shapely
 pillow
+pandas
+streamlit-drawable-canvas
