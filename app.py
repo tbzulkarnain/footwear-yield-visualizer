@@ -8,8 +8,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("📐 Footwear Material Yield Visualizer (ProCost Dual-Master & Row Interlock)")
-st.caption("Atur Master Pair (Step 1) -> Presisikan Jarak Antar-Baris (Step 2) -> Generate Nesting")
+st.title("📐 Footwear Material Yield Visualizer (ProCost True Interlock)")
+st.caption("Atur Master Pair (Step 1) -> Presisikan Row Interlock (Step 2) -> Live Auto Preview")
 
 # --- SIDEBAR PARAMETER SHEET & NESTING MODE ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -92,8 +92,8 @@ if uploaded_file is not None:
         # STEP 1: DUAL-COMPONENT MASTER BUILDER
         # ==========================================
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Adjust Dual-Component Master Interlock Pair")
-        st.caption("Atur posisi Komponen 1 & 2 hingga membentuk 1 pasang unit yang saling mengunci.")
+        st.subheader("🛠️ Step 1: Adjust Master Pair Unit (In-Pair Interlock)")
+        st.caption("Atur Komponen 1 & 2 hingga membentuk 1 pasang unit yang saling mengunci rapat.")
 
         col_c1, col_c2, col_preview = st.columns([1, 1, 1.2])
 
@@ -123,10 +123,10 @@ if uploaded_file is not None:
         if has_overlap:
             st.error("❌ Peringatan: Komponen 1 dan Komponen 2 bertabrakan (overlap)!")
         else:
-            st.success("✅ Status: Interlock Pasangan Aman & Valid (Tidak bertabrakan).")
+            st.success("✅ Status: Pasangan Master Valid & Presisi.")
 
         with col_preview:
-            fig_p, ax_p = plt.subplots(figsize=(6, 6))
+            fig_p, ax_p = plt.subplots(figsize=(5, 5))
             x1, y1 = poly1_custom.exterior.xy
             x2, y2 = poly2_custom.exterior.xy
 
@@ -134,43 +134,43 @@ if uploaded_file is not None:
             ax_p.fill(x2, y2, alpha=0.75, fc='#ff4444', ec='black', linewidth=1.5, label='Komponen 2')
             ax_p.set_aspect('equal')
             ax_p.legend(loc='upper right')
-            plt.title("Master Interlock Pair Preview", fontsize=11)
+            plt.title("Master Pair Unit Preview", fontsize=10)
             st.pyplot(fig_p)
 
-        # Hitung Bounding Box Pasangan Master
+        # Normalisasi Unit Pasangan Master
         p_minx = min(poly1_custom.bounds[0], poly2_custom.bounds[0])
         p_miny = min(poly1_custom.bounds[1], poly2_custom.bounds[1])
         p_maxx = max(poly1_custom.bounds[2], poly2_custom.bounds[2])
         p_maxy = max(poly1_custom.bounds[3], poly2_custom.bounds[3])
 
-        pair_w = p_maxx - p_minx
-        pair_h = p_maxy - p_miny
+        unit_w = p_maxx - p_minx
+        unit_h = p_maxy - p_miny
 
         poly1_unit = translate(poly1_custom, xoff=-p_minx, yoff=-p_miny)
         poly2_unit = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
 
-       # ==========================================
-        # STEP 2: ROW INTERLOCK & LIVE FULL NESTING PREVIEW
+        # ==========================================
+        # STEP 2: ROW INTERLOCK & LIVE FULL NESTING
         # ==========================================
         st.markdown("---")
         st.subheader("🚀 Step 2: Interlock Antar-Baris & Live Full Sheet Preview")
-        st.caption("Ubah slider di bawah untuk melihat perubahan layout secara langsung (Live Update).")
+        st.caption("Atur jarak antar-baris vertikal dan geser kanan/kiri agar baris atas menangkup rapi ke baris bawah.")
 
         col_row1, col_row2 = st.columns(2)
         with col_row1:
-            row_y_compress = st.slider(
-                "📉 Kompresi Vertikal Antar-Baris / Row Offset (cm)", 
-                0.0, float(pair_h * 0.8), float(pair_h * 0.35), step=0.1,
-                help="Turunkan baris atas agar puncak pola masuk ke lekukan baris di bawahnya."
+            row_y_step = st.slider(
+                "↕️ Jarak Vertikal Antar Baris Pasangan (cm)", 
+                float(unit_h * 0.2), float(unit_h * 1.2), float(unit_h * 0.75), step=0.1,
+                help="Kecilkan nilai ini untuk menumpuk/menangkupkan baris atas ke cekungan baris bawah."
             )
         with col_row2:
             row_x_stagger = st.slider(
-                "↔️ Pergeseran Selang-Seling Baris / Staggered X Shift (cm)", 
-                0.0, float(pair_w), float(pair_w * 0.25), step=0.1,
-                help="Geser baris genap ke kanan agar posisi interlock lebih presisi."
+                "↔️ Pergeseran Selang-Seling Baris / Stagger Shift (cm)", 
+                -float(unit_w), float(unit_w), 0.0, step=0.1,
+                help="Geser baris ganjil/genap agar puncak komponen masuk ke lekukan pasangannya."
             )
 
-        # GENERATE NESTING OTOMATIS (LIVE UPDATE SANGAT RESPONSIF)
+        # GENERATE FULL SHEET NESTING
         placed_polygons = []
         total_pattern_area = 0.0
 
@@ -178,33 +178,35 @@ if uploaded_file is not None:
         item_idx = 0
         row_idx = 0
 
-        effective_row_h = pair_h - row_y_compress
         curr_y = margin
 
-        while item_idx < total_items and (curr_y + pair_h) <= (sheet_length - margin):
-            x_shift_row = row_x_stagger if (row_idx % 2 == 1) else 0.0
+        while item_idx < total_items and (curr_y + min(poly1_unit.bounds[3], poly2_unit.bounds[3])) <= (sheet_length - margin):
+            # Hitung offset pergeseran horisontal untuk pola berselang-seling (Honeycomb)
+            x_shift_row = (row_idx % 2) * row_x_stagger
             curr_x = margin + x_shift_row
 
-            while item_idx < total_items and (curr_x + pair_w) <= (sheet_width - margin):
-                # Pcs 1
+            while item_idx < total_items and (curr_x + unit_w) <= (sheet_width - margin):
+                # Komponen 1
                 p1 = translate(poly1_unit, xoff=curr_x, yoff=curr_y)
-                placed_polygons.append((p1, 0))
-                total_pattern_area += p1.area
-                item_idx += 1
-
-                # Pcs 2
-                if item_idx < total_items:
-                    p2 = translate(poly2_unit, xoff=curr_x, yoff=curr_y)
-                    placed_polygons.append((p2, 1))
-                    total_pattern_area += p2.area
+                if p1.bounds[2] <= (sheet_width - margin) and p1.bounds[3] <= (sheet_length - margin):
+                    placed_polygons.append((p1, 0))
+                    total_pattern_area += p1.area
                     item_idx += 1
 
-                curr_x += pair_w + inter_gap
+                # Komponen 2
+                if item_idx < total_items:
+                    p2 = translate(poly2_unit, xoff=curr_x, yoff=curr_y)
+                    if p2.bounds[2] <= (sheet_width - margin) and p2.bounds[3] <= (sheet_length - margin):
+                        placed_polygons.append((p2, 1))
+                        total_pattern_area += p2.area
+                        item_idx += 1
+
+                curr_x += unit_w + inter_gap
 
             row_idx += 1
-            curr_y += effective_row_h + inter_gap
+            curr_y += row_y_step + inter_gap
 
-        # METRIK PROCOST
+        # METRIK
         total_sheet_area = sheet_width * sheet_length
         max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
         used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
@@ -226,7 +228,7 @@ if uploaded_file is not None:
 
         st.info(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
-        # VISUALISASI HASIL LIVE
+        # VISUALISASI FULL SHEET
         fig, ax = plt.subplots(figsize=(14, 8))
         
         sheet_rect = patches.Rectangle((0, 0), sheet_width, sheet_length, linewidth=2, edgecolor='black', facecolor='#F8F9FA')
@@ -248,7 +250,7 @@ if uploaded_file is not None:
         ax.set_xlim(-5, sheet_width + 5)
         ax.set_ylim(-5, sheet_length + 5)
         ax.set_aspect('equal')
-        plt.title(f"Interlock Row Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
+        plt.title(f"Full Sheet Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
         plt.xlabel("Width (cm)")
         plt.ylabel("Length (cm)")
         
