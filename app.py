@@ -5,11 +5,13 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from shapely.geometry import Polygon
 from shapely.affinity import translate, rotate
+from PIL import Image, ImageDraw
+from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("📐 Footwear Material Yield Visualizer (Custom Interlock Master)")
-st.caption("Atur Posisi Interlock Master (2 Pcs) -> Generate Full Sheet Nesting")
+st.title("📐 Footwear Material Yield Visualizer (Visual Interlock Editor)")
+st.caption("Drag & Rotate Komponen 2 secara Visual untuk Membuat Master Interlock Pair")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -89,43 +91,44 @@ if uploaded_file is not None:
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Adjust Master Interlock Pair (2 Pcs)")
-        st.caption("Atur posisi & rotasi komponen ke-2 agar mengunci rapat ke komponen ke-1 tanpa bertabrakan.")
+        st.subheader("🛠️ Step 1: Drag & Adjust Interlock Pair (Visual Editor)")
+        st.caption("Gunakan slider untuk mengatur posisi & rotasi Komponen 2 secara presisi hingga mengunci ke Komponen 1.")
 
-        col_control, col_preview = st.columns([1, 1])
+        col1, col2 = st.columns([1, 1])
 
-        with col_control:
-            rot_angle = st.slider("Rotasi Komponen 2 (Derajat)", 0, 360, 180, step=5)
-            offset_x = st.slider("Pergeseran X (cm)", -float(bw), float(bw * 1.5), float(bw * 0.4), step=0.1)
-            offset_y = st.slider("Pergeseran Y (cm)", -float(bh), float(bh * 1.5), float(bh * 0.5), step=0.1)
+        with col1:
+            st.markdown("**Pengaturan Posisi & Rotasi Komponen 2**")
+            rot_deg = st.slider("Rotasi Angle (°)", 0, 360, 180, step=5)
+            shift_x = st.slider("Geser Horizontal X (cm)", -float(bw), float(bw * 1.5), float(bw * 0.4), step=0.1)
+            shift_y = st.slider("Geser Vertikal Y (cm)", -float(bh), float(bh * 1.5), float(bh * 0.5), step=0.1)
 
-            # Buat Komponen 2 sesuai kontrol user
-            poly2_rot = rotate(base_poly, rot_angle, origin='center')
-            minx, miny, _, _ = poly2_rot.bounds
-            poly2_zero = translate(poly2_rot, xoff=-minx, yoff=-miny)
-            poly2_custom = translate(poly2_zero, xoff=offset_x, yoff=offset_y)
+            # Buat geometri Komponen 2
+            p2_rot = rotate(base_poly, rot_deg, origin='center')
+            minx, miny, _, _ = p2_rot.bounds
+            p2_zero = translate(p2_rot, xoff=-minx, yoff=-miny)
+            poly2_custom = translate(p2_zero, xoff=shift_x, yoff=shift_y)
 
-            # Cek status overlap/tabrakan
-            is_overlapping = base_poly.intersects(poly2_custom)
-            if is_overlapping:
-                st.warning("⚠️ Peringatan: Posisi komponen ke-2 bertabrakan (overlap) dengan komponen ke-1!")
+            # Status Overlap Check
+            has_overlap = base_poly.intersects(poly2_custom)
+            if has_overlap:
+                st.error("❌ Peringatan: Posisi komponen bertabrakan (overlap)!")
             else:
-                st.success("✅ Posisi Interlock Aman (Tidak bertabrakan).")
+                st.success("✅ Master Interlock Valid (Tidak bertabrakan).")
 
-        with col_preview:
-            # Render visualisasi unit master pasangan
-            fig_pair, ax_p = plt.subplots(figsize=(5, 5))
+        with col2:
+            # Preview Canvas Interaktif
+            fig_p, ax_p = plt.subplots(figsize=(6, 6))
             x1, y1 = base_poly.exterior.xy
             x2, y2 = poly2_custom.exterior.xy
 
-            ax_p.fill(x1, y1, alpha=0.7, fc='#88CCEE', ec='black', label='Pcs 1 (Fixed)')
-            ax_p.fill(x2, y2, alpha=0.7, fc='#CC6677', ec='black', label='Pcs 2 (Adjusted)')
+            ax_p.fill(x1, y1, alpha=0.75, fc='#3388ff', ec='black', linewidth=1.5, label='Pcs 1 (Utama)')
+            ax_p.fill(x2, y2, alpha=0.75, fc='#ff4444', ec='black', linewidth=1.5, label='Pcs 2 (Interlock)')
             ax_p.set_aspect('equal')
             ax_p.legend(loc='upper right')
-            plt.title("Master Interlock Pair Preview")
-            st.pyplot(fig_pair)
+            plt.title("Visual Master Interlock Unit", fontsize=11)
+            st.pyplot(fig_p)
 
-        # Hitung bounding box unit pasangan master
+        # Hitung Bounding Box Pasangan Master
         p_minx = min(base_poly.bounds[0], poly2_custom.bounds[0])
         p_miny = min(base_poly.bounds[1], poly2_custom.bounds[1])
         p_maxx = max(base_poly.bounds[2], poly2_custom.bounds[2])
@@ -140,26 +143,24 @@ if uploaded_file is not None:
         st.markdown("---")
         st.subheader("🚀 Step 2: Generate Full Sheet Nesting")
 
-        if st.button("Generate Full Sheet Layout", type="primary"):
+        if st.button("🚀 Run Full Sheet Nesting Simulation", type="primary"):
             placed_polygons = []
             total_pattern_area = 0.0
 
             total_items = target_pairs * 2
             item_idx = 0
 
-            # SIMULASI DUPUKASI FULL SHEET
+            # GENERATE LAYOUT BERDASARKAN MASTER PAIR USER
             if "ROWs" in nesting_mode:
                 curr_y = margin
                 while item_idx < total_items and (curr_y + pair_h) <= (sheet_length - margin):
                     curr_x = margin
                     while item_idx < total_items and (curr_x + pair_w) <= (sheet_width - margin):
-                        # Pcs 1
                         p1 = translate(poly1_unit, xoff=curr_x, yoff=curr_y)
                         placed_polygons.append((p1, 0))
                         total_pattern_area += p1.area
                         item_idx += 1
 
-                        # Pcs 2
                         if item_idx < total_items:
                             p2 = translate(poly2_unit, xoff=curr_x, yoff=curr_y)
                             placed_polygons.append((p2, 1))
@@ -187,7 +188,7 @@ if uploaded_file is not None:
                         curr_y += pair_h + inter_gap
                     curr_x += pair_w + inter_gap
 
-            # METRIK YIELD
+            # METRIK KALKULASI PROCOST
             total_sheet_area = sheet_width * sheet_length
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
             used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
@@ -207,9 +208,9 @@ if uploaded_file is not None:
             m4.metric("Overall Sheet Yield", f"{overall_sheet_yield:.2f} %")
             m5.metric("Cutting Waste", f"{total_waste:.2f} %")
 
-            st.info(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm")
+            st.info(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
-            # VISUALISASI HASIL FULL SHEET
+            # VISUALISASI HASIL LEMBARAN MATERIAL
             fig, ax = plt.subplots(figsize=(14, 8))
             
             sheet_rect = patches.Rectangle((0, 0), sheet_width, sheet_length, linewidth=2, edgecolor='black', facecolor='#F8F9FA')
@@ -222,7 +223,7 @@ if uploaded_file is not None:
             if max_used_y > 0:
                 ax.axhline(y=max_used_y, color='blue', linestyle=':', linewidth=1.5, label='Actual Cut Line')
 
-            colors = ['#88CCEE', '#CC6677']
+            colors = ['#3388ff', '#ff4444']
 
             for poly, idx in placed_polygons:
                 x, y = poly.exterior.xy
@@ -231,7 +232,7 @@ if uploaded_file is not None:
             ax.set_xlim(-5, sheet_width + 5)
             ax.set_ylim(-5, sheet_length + 5)
             ax.set_aspect('equal')
-            plt.title(f"Custom Master Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
+            plt.title(f"Custom Interlock Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
             plt.xlabel("Width (cm)")
             plt.ylabel("Length (cm)")
             
