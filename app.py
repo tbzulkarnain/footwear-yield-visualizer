@@ -3,10 +3,8 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from shapely.geometry import Polygon, box
+from shapely.geometry import Polygon
 from shapely.affinity import translate, rotate
-import io
-from PIL import Image
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
@@ -24,12 +22,12 @@ st.sidebar.header("🧩 Mode Nesting (ProCost Standard)")
 nesting_mode = st.sidebar.selectbox(
     "Pilih Mode Nesting:",
     [
+        "IP - ROWs (Interlock Pair Rows)",
         "I - ROWs (Interlock Rows)",
         "P - ROWs (Parallel Rows)",
-        "IP - ROWs (Interlock Pair Rows)",
+        "IP - COLUMNs (Interlock Pair Columns)",
         "I - COLUMNs (Interlock Columns)",
-        "P - COLUMNs (Parallel Columns)",
-        "IP - COLUMNs (Interlock Pair Columns)"
+        "P - COLUMNs (Parallel Columns)"
     ]
 )
 
@@ -37,43 +35,47 @@ target_pairs = st.sidebar.number_input("Jumlah Pasang Target (Pairs)", value=50,
 
 # --- FUNGSI OPENCV UNTUK AMBIL POLYGON POLA ---
 def extract_polygons_from_image(uploaded_file, dpi=96):
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)
-    if img is None:
+    try:
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, cv2.IMREAD_UNCHANGED)
+        if img is None:
+            return []
+
+        if len(img.shape) == 3 and img.shape[2] == 4:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+        elif len(img.shape) == 3:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = img
+
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        pixels_per_cm = dpi / 2.54
+        extracted_polygons = []
+        
+        img_h, img_w = gray.shape[:2]
+        max_area_px = (img_h * img_w) * 0.9
+
+        for cnt in contours:
+            area_px = cv2.contourArea(cnt)
+            if area_px > 300 and area_px <= max_area_px:
+                epsilon = 0.005 * cv2.arcLength(cnt, True)
+                approx = cv2.approxPolyDP(cnt, epsilon, True)
+                
+                pts = approx.reshape(-1, 2) / pixels_per_cm
+                if len(pts) >= 3:
+                    poly = Polygon(pts)
+                    if poly.is_valid and poly.area > 0:
+                        minx, miny, _, _ = poly.bounds
+                        poly_zeroed = translate(poly, xoff=-minx, yoff=-miny)
+                        extracted_polygons.append(poly_zeroed)
+
+        return extracted_polygons
+    except Exception as e:
+        st.error(f"Error pembacaan gambar: {e}")
         return []
-
-    if len(img.shape) == 3 and img.shape[2] == 4:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-    elif len(img.shape) == 3:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = img
-
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    pixels_per_cm = dpi / 2.54
-    extracted_polygons = []
-    
-    img_h, img_w = gray.shape[:2]
-    max_area_px = (img_h * img_w) * 0.9
-
-    for cnt in contours:
-        area_px = cv2.contourArea(cnt)
-        if area_px > 300 and area_px <= max_area_px:
-            epsilon = 0.005 * cv2.arcLength(cnt, True)
-            approx = cv2.approxPolyDP(cnt, epsilon, True)
-            
-            pts = approx.reshape(-1, 2) / pixels_per_cm
-            if len(pts) >= 3:
-                poly = Polygon(pts)
-                if poly.is_valid and poly.area > 0:
-                    minx, miny, _, _ = poly.bounds
-                    poly_zeroed = translate(poly, xoff=-minx, yoff=-miny)
-                    extracted_polygons.append(poly_zeroed)
-
-    return extracted_polygons
 
 # --- ALGORITMA NESTING MODULAR PROCOST ---
 def run_procost_nesting(polygons, sheet_w, sheet_l, margin_cm, gap_cm, mode, total_pairs):
@@ -92,37 +94,88 @@ def run_procost_nesting(polygons, sheet_w, sheet_l, margin_cm, gap_cm, mode, tot
     poly_w = ref_poly.bounds[2] - ref_poly.bounds[0]
     poly_h = ref_poly.bounds[3] - ref_poly.bounds[1]
 
-    # --- SIMULASI PENATAAN BERDASARKAN MODE ---
-    is_row_based = "ROWs" in mode
     item_idx = 0
     total_items = len(pattern_pool)
 
-    if is_row_based:
-        # MODE BERBASIS BARIS (ARAH LEBAR MATERIAL)
+    # 1. MODE INTERLOCK PAIRS - ROWs (IP - ROWs)
+    if "IP - ROWs" in mode:
+        shift_x = poly_w * 0.45
+        shift_y = poly_h * 0.65
+        curr_y = margin_cm
+
+        while item_idx < total_items and (curr_y + poly_h) <= (sheet_l - margin_cm):
+            curr_x = margin_cm
+            while item_idx < total_items and (curr_x + poly_w) <= (sheet_w - margin_cm):
+                # Pola 1 (0 deg)
+                poly1, orig_idx1 = pattern_pool[item_idx]
+                p1 = translate(poly1, xoff=curr_x, yoff=curr_y)
+                placed_polygons.append((p1, orig_idx1))
+                total_pattern_area += p1.area
+                item_idx += 1
+
+                # Pola 2 (180 deg & Interlock ke celah Pola 1)
+                if item_idx < total_items:
+                    poly2, orig_idx2 = pattern_pool[item_idx]
+                    p2_rot = rotate(poly2, 180, origin='center')
+                    minx, miny, _, _ = p2_rot.bounds
+                    p2_zero = translate(p2_rot, xoff=-minx, yoff=-miny)
+                    
+                    p2_placed = translate(p2_zero, xoff=curr_x + shift_x, yoff=curr_y + (poly_h - shift_y))
+                    
+                    if p2_placed.bounds[2] <= (sheet_w - margin_cm) and p2_placed.bounds[3] <= (sheet_l - margin_cm):
+                        placed_polygons.append((p2_placed, orig_idx2))
+                        total_pattern_area += p2_placed.area
+                        item_idx += 1
+
+                curr_x += (poly_w + shift_x + gap_cm)
+            curr_y += (shift_y + gap_cm)
+
+    # 2. MODE INTERLOCK PAIRS - COLUMNs (IP - COLUMNs)
+    elif "IP - COLUMNs" in mode:
+        shift_x = poly_w * 0.65
+        shift_y = poly_h * 0.45
+        curr_x = margin_cm
+
+        while item_idx < total_items and (curr_x + poly_w) <= (sheet_w - margin_cm):
+            curr_y = margin_cm
+            while item_idx < total_items and (curr_y + poly_h) <= (sheet_l - margin_cm):
+                # Pola 1 (0 deg)
+                poly1, orig_idx1 = pattern_pool[item_idx]
+                p1 = translate(poly1, xoff=curr_x, yoff=curr_y)
+                placed_polygons.append((p1, orig_idx1))
+                total_pattern_area += p1.area
+                item_idx += 1
+
+                # Pola 2 (180 deg & Interlock Kolom)
+                if item_idx < total_items:
+                    poly2, orig_idx2 = pattern_pool[item_idx]
+                    p2_rot = rotate(poly2, 180, origin='center')
+                    minx, miny, _, _ = p2_rot.bounds
+                    p2_zero = translate(p2_rot, xoff=-minx, yoff=-miny)
+                    
+                    p2_placed = translate(p2_zero, xoff=curr_x + (poly_w - shift_x), yoff=curr_y + shift_y)
+                    
+                    if p2_placed.bounds[2] <= (sheet_w - margin_cm) and p2_placed.bounds[3] <= (sheet_l - margin_cm):
+                        placed_polygons.append((p2_placed, orig_idx2))
+                        total_pattern_area += p2_placed.area
+                        item_idx += 1
+
+                curr_y += (poly_h + shift_y + gap_cm)
+            curr_x += (shift_x + gap_cm)
+
+    # 3. MODE ROWs LAINNYA (I-ROWs & P-ROWs)
+    elif "ROWs" in mode:
         curr_y = margin_cm
         row_idx = 0
 
         while item_idx < total_items and (curr_y + poly_h) <= (sheet_l - margin_cm):
-            # Penentuan Rotasi Baris
-            if "I - ROWs" in mode:
-                # Baris ganjil diputar 180 untuk interlock
-                row_rot = 180 if (row_idx % 2 == 1) else 0
-                y_overlap = 0.82 if (row_idx > 0) else 1.0
-            elif "IP - ROWs" in mode:
-                # Baris 2 diputar 180 (interlock pair), baris berikutnya mengulang pasangan
-                row_rot = 180 if (row_idx % 2 == 1) else 0
-                y_overlap = 0.82 if (row_idx % 2 == 1) else 1.0
-            else: # P - ROWs
-                row_rot = 0
-                y_overlap = 1.0
+            row_rot = 180 if ("I - ROWs" in mode and row_idx % 2 == 1) else 0
+            y_overlap = 0.82 if ("I - ROWs" in mode and row_idx > 0) else 1.0
 
             curr_x = margin_cm
-            row_height = poly_h
-
             while item_idx < total_items and (curr_x + poly_w) <= (sheet_w - margin_cm):
                 poly, orig_idx = pattern_pool[item_idx]
 
-                # Terapkan rotasi
                 p_rot = rotate(poly, row_rot, origin='center')
                 minx, miny, _, _ = p_rot.bounds
                 p_rot = translate(p_rot, xoff=-minx, yoff=-miny)
@@ -135,28 +188,18 @@ def run_procost_nesting(polygons, sheet_w, sheet_l, margin_cm, gap_cm, mode, tot
                 curr_x += poly_w + gap_cm
 
             row_idx += 1
-            curr_y += (row_height * y_overlap) + gap_cm
+            curr_y += (poly_h * y_overlap) + gap_cm
 
+    # 4. MODE COLUMNs LAINNYA (I-COLUMNs & P-COLUMNs)
     else:
-        # MODE BERBASIS KOLOM (ARAH PANJANG MATERIAL)
         curr_x = margin_cm
         col_idx = 0
 
         while item_idx < total_items and (curr_x + poly_w) <= (sheet_w - margin_cm):
-            # Penentuan Rotasi Kolom
-            if "I - COLUMNs" in mode:
-                col_rot = 180 if (col_idx % 2 == 1) else 0
-                x_overlap = 0.82 if (col_idx > 0) else 1.0
-            elif "IP - COLUMNs" in mode:
-                col_rot = 180 if (col_idx % 2 == 1) else 0
-                x_overlap = 0.82 if (col_idx % 2 == 1) else 1.0
-            else: # P - COLUMNs
-                col_rot = 0
-                x_overlap = 1.0
+            col_rot = 180 if ("I - COLUMNs" in mode and col_idx % 2 == 1) else 0
+            x_overlap = 0.82 if ("I - COLUMNs" in mode and col_idx > 0) else 1.0
 
             curr_y = margin_cm
-            col_width = poly_w
-
             while item_idx < total_items and (curr_y + poly_h) <= (sheet_l - margin_cm):
                 poly, orig_idx = pattern_pool[item_idx]
 
@@ -172,7 +215,7 @@ def run_procost_nesting(polygons, sheet_w, sheet_l, margin_cm, gap_cm, mode, tot
                 curr_y += poly_h + gap_cm
 
             col_idx += 1
-            curr_x += (col_width * x_overlap) + gap_cm
+            curr_x += (poly_w * x_overlap) + gap_cm
 
     return placed_polygons, total_pattern_area
 
