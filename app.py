@@ -138,7 +138,7 @@ if uploaded_file is not None:
             ]
         }
 
-        # TAMPILKAN KANVAS INTERAKTIF (DRAG & DROP)
+       # TAMPILKAN KANVAS INTERAKTIF (DRAG & DROP)
         canvas_result = st_canvas(
             fill_color="rgba(255, 68, 68, 0.7)",
             stroke_width=1,
@@ -147,7 +147,8 @@ if uploaded_file is not None:
             update_streamlit=True,
             height=canvas_h_px,
             width=canvas_w_px,
-            drawing_mode="transform", # Mode transform memungkinkan drag, scaling, dan rotasi
+            drawing_mode="freedraw",  # Menggantikan "transform" yang sudah tidak didukung
+            display_toolbar=True,     # Menampilkan toolbar agar opsi select/move aktif
             key="interlock_canvas",
         )
 
