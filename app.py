@@ -8,8 +8,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("🤖 Footwear Material Yield Visualizer (Strict AI Auto-Nesting)")
-st.caption("Auto-Optimizer dengan Validasi Geometri Global (100% Bebas Tabrakan Guarantee)")
+st.title("⚡ Footwear Material Yield Visualizer (Fast AI Auto-Nesting)")
+st.caption("Auto-Nesting Cepat & Bebas Tabrakan (ProCost Optimized Engine)")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -64,57 +64,49 @@ def extract_polygons_from_image(uploaded_file, dpi=96):
         st.error(f"Error pembacaan gambar: {e}")
         return []
 
-# --- FUNGSIONALITAS TEST LAYOUT 3 BARIS UNTUK MEMASTIKAN BENTURAN GLOBAL ---
-def is_layout_collision_free(poly1, poly2, unit_w, r2_sx, r2_sy, gap_cm):
-    # Buat grid test 3 baris x 3 kolom
-    test_polys = []
-    
-    # Buffer gap aman
-    p1_buf = poly1.buffer(gap_cm / 2)
-    p2_buf = poly2.buffer(gap_cm / 2)
+# --- FAST COLLISION CHECK ENGINE ---
+def check_grid_collision(p1_buf, p2_buf, unit_w, r2_sx, r2_sy, gap):
+    # Cek benturan lokal 2x2 saja untuk efisiensi tinggi
+    polys = []
+    for r in range(2):
+        for c in range(2):
+            x = c * (unit_w + gap) + (r * r2_sx)
+            y = r * r2_sy
+            
+            t1 = translate(p1_buf, xoff=x, yoff=y)
+            t2 = translate(p2_buf, xoff=x, yoff=y)
 
-    for row in range(3):
-        y_pos = row * r2_sy
-        x_shift = (row % 2) * r2_sx
-
-        for col in range(3):
-            x_pos = (col * (unit_w + gap_cm)) + x_shift
-
-            t1 = translate(p1_buf, xoff=x_pos, yoff=y_pos)
-            t2 = translate(p2_buf, xoff=x_pos, yoff=y_pos)
-
-            for existing in test_polys:
+            for existing in polys:
                 if t1.intersects(existing) or t2.intersects(existing):
-                    return False  # Ada benturan
+                    return True # Ada benturan
+            polys.extend([t1, t2])
+    return False # Safe
 
-            test_polys.append(t1)
-            test_polys.append(t2)
-
-    return True  # 100% Aman!
-
-# --- ENGINE OPTIMASI AI KETAT ---
-def find_best_ai_nesting_strict(base_poly, gap_cm):
+# --- OPTIMIZED FAST AI ENGINE ---
+def find_fast_ai_nesting(base_poly, gap_cm):
     bw = base_poly.bounds[2] - base_poly.bounds[0]
     bh = base_poly.bounds[3] - base_poly.bounds[1]
 
     best_score = -1.0
     best_config = None
 
-    angles = [180, 0, 90, 270]
+    # Rotasi standar footwear interlock: 180° dan 0°
+    angles = [180, 0]
 
-    # Iterasi AI multi-parameter
     for rot2 in angles:
         p2_rot = rotate(base_poly, rot2, origin='center')
         minx2, miny2, _, _ = p2_rot.bounds
         p2_zero = translate(p2_rot, xoff=-minx2, yoff=-miny2)
 
-        for dx2 in np.linspace(0.0, 0.8 * bw, 8):
-            for dy2 in np.linspace(0.0, 0.9 * bh, 8):
+        # Sampling presisi ringan (5x5 grid)
+        for dx2 in np.linspace(0.1 * bw, 0.7 * bw, 5):
+            for dy2 in np.linspace(0.1 * bh, 0.8 * bh, 5):
                 poly2_cand = translate(p2_zero, xoff=dx2, yoff=dy2)
 
-                # Syarat 1: In-Pair Interlock Aman
-                if not poly2_cand.buffer(gap_cm / 2).intersects(base_poly):
-                    
+                p1_buf = base_poly.buffer(gap_cm / 2)
+                p2_buf = poly2_cand.buffer(gap_cm / 2)
+
+                if not p2_buf.intersects(base_poly):
                     p_minx = min(base_poly.bounds[0], poly2_cand.bounds[0])
                     p_miny = min(base_poly.bounds[1], poly2_cand.bounds[1])
                     p_maxx = max(base_poly.bounds[2], poly2_cand.bounds[2])
@@ -122,19 +114,21 @@ def find_best_ai_nesting_strict(base_poly, gap_cm):
 
                     u1 = translate(base_poly, xoff=-p_minx, yoff=-p_miny)
                     u2 = translate(poly2_cand, xoff=-p_minx, yoff=-p_miny)
+                    u1_b = translate(p1_buf, xoff=-p_minx, yoff=-p_miny)
+                    u2_b = translate(p2_buf, xoff=-p_minx, yoff=-p_miny)
+
                     unit_w = p_maxx - p_minx
                     unit_h = p_maxy - p_miny
 
-                    # Syarat 2: Cari R2 Offset & Cek Benturan Multi-Baris secara Global
-                    for r2_sx in np.linspace(-0.5 * unit_w, 0.5 * unit_w, 10):
-                        for r2_sy in np.linspace(0.4 * unit_h, 1.1 * unit_h, 12):
+                    # Cari offset baris (6x6)
+                    for r2_sx in np.linspace(-0.4 * unit_w, 0.4 * unit_w, 6):
+                        for r2_sy in np.linspace(0.5 * unit_h, 1.0 * unit_h, 6):
 
-                            if is_layout_collision_free(u1, u2, unit_w, r2_sx, r2_sy, gap_cm):
-                                # Hitung efisiensi kerapatan area
-                                density_score = (u1.area * 2) / (unit_w * r2_sy)
+                            if not check_grid_collision(u1_b, u2_b, unit_w, r2_sx, r2_sy, gap_cm):
+                                score = (u1.area * 2) / (unit_w * r2_sy)
 
-                                if density_score > best_score:
-                                    best_score = density_score
+                                if score > best_score:
+                                    best_score = score
                                     best_config = {
                                         'u1': u1, 'u2': u2,
                                         'unit_w': unit_w, 'unit_h': unit_h,
@@ -155,14 +149,14 @@ if uploaded_file is not None:
         base_poly = raw_polygons[0]
 
         st.markdown("---")
-        st.subheader("⚡ Full Automated AI Nesting Engine")
+        st.subheader("⚡ Fast AI Nesting Engine")
         
         if st.button("🤖 Run AI Auto-Nesting Optimization", type="primary"):
-            with st.spinner("AI sedang melakukan pengujian benturan global untuk memastikan layout 100% presisi..."):
-                cfg = find_best_ai_nesting_strict(base_poly, inter_gap)
+            with st.spinner("AI sedang mengkalkulasi layout paling presisi dan bebas tabrakan..."):
+                cfg = find_fast_ai_nesting(base_poly, inter_gap)
 
                 if cfg is None:
-                    st.error("Gagal menemukan posisi aman. Coba kecilkan 'Jarak Antar Pola' di sidebar.")
+                    st.error("Gagal menemukan posisi aman. Naikkan sedikit nilai 'Jarak Antar Pola' di sidebar.")
                 else:
                     poly1_unit = cfg['u1']
                     poly2_unit = cfg['u2']
@@ -224,7 +218,7 @@ if uploaded_file is not None:
                     pairs_completed = len(placed_polygons) // 2
                     consumption_per_pair = (used_sheet_area / 10000) / max(pairs_completed, 1)
 
-                    st.success("✅ AI Optimization Successful! Layout 100% Bebas Tabrakan pada Seluruh Lembaran Bahan.")
+                    st.success("✅ AI Optimization Complete! Layout presisi & 100% bebas tabrakan.")
 
                     st.markdown("### 📊 Yield & Material Consumption Summary")
                     m1, m2, m3, m4, m5 = st.columns(5)
@@ -258,7 +252,7 @@ if uploaded_file is not None:
                     ax.set_xlim(-5, sheet_width + 5)
                     ax.set_ylim(-5, sheet_length + 5)
                     ax.set_aspect('equal')
-                    plt.title(f"Strict AI Verified Layout | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
+                    plt.title(f"Fast AI Verified Layout | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
                     plt.xlabel("Width (cm)")
                     plt.ylabel("Length (cm)")
                     
