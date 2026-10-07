@@ -8,8 +8,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("📐 Footwear Material Yield Visualizer (Precision Interlock Control)")
-st.caption("Step 1: Atur Master Pair -> Step 2: Presisikan Row Interlock & Live Collision Detection")
+st.title("📐 Footwear Material Yield Visualizer (2-Row Master Replication)")
+st.caption("Step 1: Atur Pasangan Master -> Step 2: Atur Baris 1 & Baris 2 -> Step 3: Replikasi ke Seluruh Bahan")
 
 # --- SIDEBAR PARAMETER SHEET & NESTING MODE ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -17,17 +17,6 @@ sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value
 sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
 margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, step=0.5)
 inter_gap = st.sidebar.number_input("Jarak Antar Pola / Interlacing Gap (cm)", value=0.5, step=0.1)
-
-st.sidebar.header("🧩 Mode Nesting (ProCost Standard)")
-nesting_mode = st.sidebar.selectbox(
-    "Pilih Mode Duplikasi:",
-    [
-        "IP - ROWs (Interlock Pair Rows)",
-        "IP - COLUMNs (Interlock Pair Columns)",
-        "P - ROWs (Parallel Rows)",
-        "P - COLUMNs (Parallel Columns)"
-    ]
-)
 
 target_pairs = st.sidebar.number_input("Jumlah Pasang Target (Pairs)", value=50, min_value=1, step=1)
 
@@ -89,11 +78,11 @@ if uploaded_file is not None:
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
         # ==========================================
-        # STEP 1: DUAL-COMPONENT MASTER BUILDER
+        # STEP 1: SET PASANGAN MASTER (Pcs 1 & Pcs 2)
         # ==========================================
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Adjust Master Pair Unit (In-Pair Interlock)")
-        st.caption("Atur Komponen 1 & 2 hingga membentuk 1 pasang unit yang saling mengunci rapat.")
+        st.subheader("🛠️ Step 1: Atur Pasangan Komponen (Base Pair Unit)")
+        st.caption("Atur Komponen 1 (Biru) & Komponen 2 (Merah) hingga membentuk 1 pasang unit yang saling mengunci.")
 
         col_c1, col_c2, col_preview = st.columns([1, 1, 1.2])
 
@@ -126,7 +115,7 @@ if uploaded_file is not None:
             st.success("✅ Status: Pasangan Master Valid & Presisi.")
 
         with col_preview:
-            fig_p, ax_p = plt.subplots(figsize=(5, 5))
+            fig_p, ax_p = plt.subplots(figsize=(4.5, 4.5))
             x1, y1 = poly1_custom.exterior.xy
             x2, y2 = poly2_custom.exterior.xy
 
@@ -134,10 +123,10 @@ if uploaded_file is not None:
             ax_p.fill(x2, y2, alpha=0.75, fc='#ff4444', ec='black', linewidth=1.5, label='Komponen 2')
             ax_p.set_aspect('equal')
             ax_p.legend(loc='upper right')
-            plt.title("Master Pair Unit Preview", fontsize=10)
+            plt.title("Base Pair Unit Preview", fontsize=10)
             st.pyplot(fig_p)
 
-        # Normalisasi Unit Pasangan Master
+        # Normalisasi Unit Pasangan
         p_minx = min(poly1_custom.bounds[0], poly2_custom.bounds[0])
         p_miny = min(poly1_custom.bounds[1], poly2_custom.bounds[1])
         p_maxx = max(poly1_custom.bounds[2], poly2_custom.bounds[2])
@@ -150,56 +139,93 @@ if uploaded_file is not None:
         poly2_unit = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
 
         # ==========================================
-        # STEP 2: ROW INTERLOCK CONTROL & LIVE PREVIEW
+        # STEP 2: SET HUBUNGAN BARIS 1 & BARIS 2
         # ==========================================
         st.markdown("---")
-        st.subheader("🚀 Step 2: Presisikan Interlock Antar-Baris")
-        st.caption("Atur jarak vertikal dan pergeseran selang-seling baris secara manual hingga mendapatkan kerapatan terbaik.")
+        st.subheader("🛠️ Step 2: Atur Interlock Baris 2 terhadap Baris 1")
+        st.caption("Geser posisi Baris 2 secara manual agar menangkup sempurna ke atas Baris 1.")
 
-        col_row1, col_row2 = st.columns(2)
-        with col_row1:
-            row_y_step = st.slider(
-                "↕️ Jarak Vertikal Antar Baris (cm)", 
-                float(unit_h * 0.2), float(unit_h * 1.2), float(unit_h * 0.75), step=0.1,
-                help="Kecilkan nilai ini untuk menumpuk/menangkupkan baris atas ke cekungan baris bawah."
-            )
-        with col_row2:
-            row_x_stagger = st.slider(
-                "↔️ Pergeseran Selang-Seling Baris / Stagger Shift (cm)", 
-                -float(unit_w), float(unit_w), 0.0, step=0.1,
-                help="Geser baris ganjil/genap agar puncak komponen masuk ke lekukan pasangannya."
+        col_r2_ctrl, col_r2_prev = st.columns([1, 1.2])
+
+        with col_r2_ctrl:
+            r2_shift_x = st.slider("↔️ Pergeseran Horizontal Baris 2 (cm)", -float(unit_w), float(unit_w), float(unit_w * 0.25), step=0.1)
+            r2_shift_y = st.slider("↕️ Jarak Vertikal Baris 2 dari Baris 1 (cm)", float(unit_h * 0.2), float(unit_h * 1.2), float(unit_h * 0.75), step=0.1)
+
+            # Buat Unit Baris 1 dan Baris 2
+            row1_p1 = poly1_unit
+            row1_p2 = poly2_unit
+
+            row2_p1 = translate(poly1_unit, xoff=r2_shift_x, yoff=r2_shift_y)
+            row2_p2 = translate(poly2_unit, xoff=r2_shift_x, yoff=r2_shift_y)
+
+            # Deteksi Overlap antara Baris 1 dan Baris 2
+            row_overlap = (
+                row2_p1.intersects(row1_p1) or row2_p1.intersects(row1_p2) or
+                row2_p2.intersects(row1_p1) or row2_p2.intersects(row1_p2)
             )
 
-        # GENERATE FULL SHEET NESTING WITH REALTIME COLLISION GUARD
+            if row_overlap:
+                st.error("⚠️ Baris 2 bertabrakan dengan Baris 1! Naikkkan sedikit jarak vertikal Y.")
+            else:
+                st.success("✅ Interlock Baris 1 & Baris 2 Sempurna!")
+
+        with col_r2_prev:
+            fig_r2, ax_r2 = plt.subplots(figsize=(6, 4))
+            
+            # Draw Row 1
+            ax_r2.fill(*row1_p1.exterior.xy, alpha=0.7, fc='#3388ff', ec='black', label='Baris 1 (Pcs 1)')
+            ax_r2.fill(*row1_p2.exterior.xy, alpha=0.7, fc='#ff4444', ec='black', label='Baris 1 (Pcs 2)')
+            
+            # Draw Row 2
+            ax_r2.fill(*row2_p1.exterior.xy, alpha=0.9, fc='#1155bb', ec='black', hatch='//', label='Baris 2 (Pcs 1)')
+            ax_r2.fill(*row2_p2.exterior.xy, alpha=0.9, fc='#bb1111', ec='black', hatch='//', label='Baris 2 (Pcs 2)')
+
+            ax_r2.set_aspect('equal')
+            ax_r2.legend(loc='upper right', fontsize=8)
+            plt.title("Preview Master Interlock (Baris 1 & Baris 2)", fontsize=10)
+            st.pyplot(fig_r2)
+
+        # ==========================================
+        # STEP 3: REPLIKASI OTOMATIS (BARIS 3, 4, 5, DST)
+        # ==========================================
+        st.markdown("---")
+        st.subheader("🚀 Step 3: Replikasi ke Seluruh Lembaran Bahan")
+        st.caption("Sistem akan menduplikasi pola interlock Baris 1 & 2 ke seluruh lembaran kain secara konsisten.")
+
         placed_polygons = []
         total_pattern_area = 0.0
 
         total_items = target_pairs * 2
         item_idx = 0
         row_idx = 0
-        has_nesting_overlap = False
 
-        curr_y = margin
+        # Blok Replikasi 2-Baris (Block Y Step = 2 * r2_shift_y)
+        block_y_step = 2 * r2_shift_y
+        block_x_step = 2 * r2_shift_x
 
-        while item_idx < total_items and (curr_y + min(poly1_unit.bounds[3], poly2_unit.bounds[3])) <= (sheet_length - margin):
-            if row_idx % 2 == 1:
-                x_start = margin + row_x_stagger
+        curr_base_y = margin
+
+        while item_idx < total_items and (curr_base_y + min(poly1_unit.bounds[3], poly2_unit.bounds[3])) <= (sheet_length - margin):
+            # Penentuan posisi Y untuk baris saat ini (Ganjil vs Genap)
+            is_row_even = (row_idx % 2 == 0)
+            
+            if is_row_even:
+                # Pola Baris Genap (0, 2, 4...) -> Mengikuti Baris 1
+                row_y = curr_base_y
+                x_offset = 0.0
             else:
-                x_start = margin
+                # Pola Baris Ganjil (1, 3, 5...) -> Mengikuti Baris 2
+                row_y = curr_base_y + r2_shift_y
+                x_offset = r2_shift_x
 
-            curr_x = x_start
+            curr_x = margin + x_offset
 
             while curr_x < margin:
                 curr_x += (unit_w + inter_gap)
 
             while item_idx < total_items and (curr_x + unit_w) <= (sheet_width - margin):
                 # Komponen 1 (Biru)
-                p1 = translate(poly1_unit, xoff=curr_x, yoff=curr_y)
-                
-                # Cek benturan dengan elemen terpasang
-                if any(p1.intersects(existing_p) for existing_p, _ in placed_polygons):
-                    has_nesting_overlap = True
-
+                p1 = translate(poly1_unit, xoff=curr_x, yoff=row_y)
                 if p1.bounds[2] <= (sheet_width - margin) and p1.bounds[3] <= (sheet_length - margin) and p1.bounds[0] >= margin:
                     placed_polygons.append((p1, 0))
                     total_pattern_area += p1.area
@@ -207,11 +233,7 @@ if uploaded_file is not None:
 
                 # Komponen 2 (Merah)
                 if item_idx < total_items:
-                    p2 = translate(poly2_unit, xoff=curr_x, yoff=curr_y)
-                    
-                    if any(p2.intersects(existing_p) for existing_p, _ in placed_polygons):
-                        has_nesting_overlap = True
-
+                    p2 = translate(poly2_unit, xoff=curr_x, yoff=row_y)
                     if p2.bounds[2] <= (sheet_width - margin) and p2.bounds[3] <= (sheet_length - margin) and p2.bounds[0] >= margin:
                         placed_polygons.append((p2, 1))
                         total_pattern_area += p2.area
@@ -220,13 +242,8 @@ if uploaded_file is not None:
                 curr_x += unit_w + inter_gap
 
             row_idx += 1
-            curr_y += row_y_step + inter_gap
-
-        # TAMPILKAN INDIKATOR DETEKSI TABRAKAN
-        if has_nesting_overlap:
-            st.error("⚠️ Terjadi tabrakan antar-baris! Naikkan sedikit nilai slider 'Jarak Vertikal Antar Baris' agar komponen tidak saling menindih.")
-        else:
-            st.success("✅ Layout Presisi & 100% Bebas Tabrakan!")
+            if row_idx % 2 == 0:
+                curr_base_y += block_y_step
 
         # METRIK SUMMARY
         total_sheet_area = sheet_width * sheet_length
@@ -272,7 +289,7 @@ if uploaded_file is not None:
         ax.set_xlim(-5, sheet_width + 5)
         ax.set_ylim(-5, sheet_length + 5)
         ax.set_aspect('equal')
-        plt.title(f"Precision Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
+        plt.title(f"Replicated 2-Row Master Layout | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
         plt.xlabel("Width (cm)")
         plt.ylabel("Length (cm)")
         
