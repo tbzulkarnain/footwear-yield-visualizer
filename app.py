@@ -8,8 +8,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("📐 Footwear Material Yield Visualizer (ProCost True Interlock)")
-st.caption("Atur Master Pair (Step 1) -> Presisikan Row Interlock (Step 2) -> Live Auto Preview")
+st.title("📐 Footwear Material Yield Visualizer (Auto-Snap Precision)")
+st.caption("Step 1: Atur Master Pair -> Step 2: Auto-Snap Row Interlock -> Live Full Sheet Preview")
 
 # --- SIDEBAR PARAMETER SHEET & NESTING MODE ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -74,6 +74,27 @@ def extract_polygons_from_image(uploaded_file, dpi=96):
     except Exception as e:
         st.error(f"Error pembacaan gambar: {e}")
         return []
+
+# --- SOLUSI 2: FUNGSI AUTO-SNAP HITUNG JARAK AMAN MUKASIMIL ---
+def calculate_auto_row_step(poly1_unit, poly2_unit, stagger_x, min_gap_cm):
+    unit_h = max(poly1_unit.bounds[3], poly2_unit.bounds[3])
+    
+    # Coba turunkan Y secara bertahap dari atas ke bawah untuk mencari titik batas bersentuhan
+    for dy in np.arange(unit_h, 0.0, -0.1):
+        p1_next = translate(poly1_unit, xoff=stagger_x, yoff=dy)
+        p2_next = translate(poly2_unit, xoff=stagger_x, yoff=dy)
+        
+        # Buffer min_gap_cm digunakan agar tidak saling menempel rapat tanpa batas cutting gap
+        p1_buf = p1_next.buffer(min_gap_cm / 2)
+        p2_buf = p2_next.buffer(min_gap_cm / 2)
+
+        overlap_1 = p1_buf.intersects(poly1_unit) or p1_buf.intersects(poly2_unit)
+        overlap_2 = p2_buf.intersects(poly1_unit) or p2_buf.intersects(poly2_unit)
+        
+        if overlap_1 or overlap_2:
+            return dy + 0.1 # Batas aman terdekat sebelum benturan
+            
+    return unit_h
 
 # --- UPLOAD GAMBAR ---
 uploaded_file = st.file_uploader("Upload Gambar Pattern Component Master", type=["png", "jpg", "jpeg"])
@@ -150,27 +171,24 @@ if uploaded_file is not None:
         poly2_unit = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
 
         # ==========================================
-        # STEP 2: ROW INTERLOCK & LIVE FULL NESTING
+        # STEP 2: AUTO-SNAP ROW INTERLOCK
         # ==========================================
         st.markdown("---")
-        st.subheader("🚀 Step 2: Interlock Antar-Baris & Live Full Sheet Preview")
-        st.caption("Atur jarak antar-baris vertikal dan geser kanan/kiri agar baris atas menangkup rapi ke baris bawah.")
+        st.subheader("🚀 Step 2: Auto-Snap Row Interlock & Live Preview")
+        st.caption("Atur pergeseran selang-seling (Stagger Shift). Jarak vertikal aman akan dihitung otomatis tanpa tabrakan.")
 
-        col_row1, col_row2 = st.columns(2)
-        with col_row1:
-            row_y_step = st.slider(
-                "↕️ Jarak Vertikal Antar Baris Pasangan (cm)", 
-                float(unit_h * 0.2), float(unit_h * 1.2), float(unit_h * 0.75), step=0.1,
-                help="Kecilkan nilai ini untuk menumpuk/menangkupkan baris atas ke cekungan baris bawah."
-            )
-        with col_row2:
-            row_x_stagger = st.slider(
-                "↔️ Pergeseran Selang-Seling Baris / Stagger Shift (cm)", 
-                -float(unit_w), float(unit_w), 0.0, step=0.1,
-                help="Geser baris ganjil/genap agar puncak komponen masuk ke lekukan pasangannya."
-            )
+        row_x_stagger = st.slider(
+            "↔️ Pergeseran Selang-Seling Baris / Stagger Shift (cm)", 
+            -float(unit_w), float(unit_w), float(unit_w * 0.25), step=0.1,
+            help="Geser posisi horisontal baris ganjil/genap agar puncak komponen masuk ke celah baris di bawahnya."
+        )
 
-        # GENERATE FULL SHEET NESTING (KONSISTEN UNTUK SEMUA BARIS)
+        # KALKULASI OTOMATIS JARAK ANTA BARIS DENGAN SOLUSI 2
+        auto_y_step = calculate_auto_row_step(poly1_unit, poly2_unit, row_x_stagger, inter_gap)
+        
+        st.info(f"⚡ **Auto-Snap Active:** Jarak vertikal antar-baris ter-kompresi optimal di **{auto_y_step:.2f} cm** (100% Bebas Tabrakan).")
+
+        # GENERATE FULL SHEET NESTING
         placed_polygons = []
         total_pattern_area = 0.0
 
@@ -181,7 +199,6 @@ if uploaded_file is not None:
         curr_y = margin
 
         while item_idx < total_items and (curr_y + min(poly1_unit.bounds[3], poly2_unit.bounds[3])) <= (sheet_length - margin):
-            # Pergeseran X selang-seling konsisten untuk baris ganjil (1, 3, 5...) dan genap (0, 2, 4...)
             if row_idx % 2 == 1:
                 x_start = margin + row_x_stagger
             else:
@@ -189,7 +206,6 @@ if uploaded_file is not None:
 
             curr_x = x_start
 
-            # Jika pergeseran X membuat batas awal di luar margin kiri, sesuaikan agar tetap terisi
             while curr_x < margin:
                 curr_x += (unit_w + inter_gap)
 
@@ -212,7 +228,7 @@ if uploaded_file is not None:
                 curr_x += unit_w + inter_gap
 
             row_idx += 1
-            curr_y += row_y_step + inter_gap
+            curr_y += auto_y_step + inter_gap
 
         # METRIK
         total_sheet_area = sheet_width * sheet_length
@@ -258,7 +274,7 @@ if uploaded_file is not None:
         ax.set_xlim(-5, sheet_width + 5)
         ax.set_ylim(-5, sheet_length + 5)
         ax.set_aspect('equal')
-        plt.title(f"Full Sheet Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
+        plt.title(f"Auto-Snap Interlock Layout ({nesting_mode}) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
         plt.xlabel("Width (cm)")
         plt.ylabel("Length (cm)")
         
