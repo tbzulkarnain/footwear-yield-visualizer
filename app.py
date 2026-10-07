@@ -7,8 +7,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("📐 Footwear Material Yield Visualizer (Plotly Real-Time)")
-st.caption("Atur Pasangan & Baris secara Interaktif -> Gambar Muncul LangsungTanpa Delay")
+st.title("⚡ Footwear Material Yield Visualizer (Ultra-Fast Plotly)")
+st.caption("Atur Pasangan & Baris secara Interaktif -> Hasil Render Langsung Muncul Instan")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -106,7 +106,7 @@ if uploaded_file is not None:
             p2_zero = translate(p2_rot, xoff=-minx2, yoff=-miny2)
             poly2_custom = translate(p2_zero, xoff=shift_x2, yoff=shift_y2)
 
-        # Hitung Normalisasi Pair
+        # Normalisasi Unit Pair
         p_minx = min(poly1_custom.bounds[0], poly2_custom.bounds[0])
         p_miny = min(poly1_custom.bounds[1], poly2_custom.bounds[1])
         p_maxx = max(poly1_custom.bounds[2], poly2_custom.bounds[2])
@@ -118,17 +118,17 @@ if uploaded_file is not None:
         poly1_unit = translate(poly1_custom, xoff=-p_minx, yoff=-p_miny)
         poly2_unit = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
 
-        # PREVIEW PASANGAN MASTER (PLOTLY)
+        # PREVIEW PASANGAN MASTER (FAST PLOTLY)
         with col_prev:
             fig_p = go.Figure()
 
             x1, y1 = poly1_unit.exterior.xy
-            fig_p.add_trace(go.Scatter(x=list(x1), y=list(y1), fill="toself", name="Pcs 1 (Biru)", fillcolor="rgba(51, 136, 255, 0.8)", line=dict(color="black")))
+            fig_p.add_trace(go.Scatter(x=list(x1), y=list(y1), fill="toself", name="Pcs 1 (Biru)", fillcolor="rgba(51, 136, 255, 0.85)", line=dict(color="black", width=1)))
 
             x2, y2 = poly2_unit.exterior.xy
-            fig_p.add_trace(go.Scatter(x=list(x2), y=list(y2), fill="toself", name="Pcs 2 (Merah)", fillcolor="rgba(255, 68, 68, 0.8)", line=dict(color="black")))
+            fig_p.add_trace(go.Scatter(x=list(x2), y=list(y2), fill="toself", name="Pcs 2 (Merah)", fillcolor="rgba(255, 68, 68, 0.85)", line=dict(color="black", width=1)))
 
-            fig_p.update_layout(title="Preview Master Pair Unit", yaxis=dict(scaleanchor="x", scaleratio=1), height=300, margin=dict(l=10, r=10, t=30, b=10))
+            fig_p.update_layout(title="Preview Master Pair Unit", yaxis=dict(scaleanchor="x", scaleratio=1), height=280, margin=dict(l=10, r=10, t=30, b=10))
             st.plotly_chart(fig_p, use_container_width=True)
 
         # ==========================================
@@ -157,7 +157,7 @@ if uploaded_file is not None:
         else:
             st.success("✅ Layout 100% Bebas Tabrakan!")
 
-        # GENERATE LAYOUT
+        # GENERATE NESTING GEOMETRI
         placed_polygons = []
         total_pattern_area = 0.0
 
@@ -219,44 +219,61 @@ if uploaded_file is not None:
         st.info(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
         # ==========================================
-        # VISUALISASI FULL SHEET LAYOUT (PLOTLY REAL-TIME)
+        # VISUALISASI FULL SHEET LAYOUT (BATCH TRACE RENDERING)
         # ==========================================
         fig_sheet = go.Figure()
 
-        # Garis Batas Kain (Kuning/Putih)
+        # 1. Batas Lembaran Material
         fig_sheet.add_trace(go.Scatter(
             x=[0, sheet_width, sheet_width, 0, 0],
             y=[0, 0, sheet_length, sheet_length, 0],
             mode="lines",
-            name="Sheet Boundary",
+            name="Sheet",
             line=dict(color="black", width=2)
         ))
 
-        # Garis Margin (Merah Putus-Putus)
+        # 2. Batas Margin
         fig_sheet.add_trace(go.Scatter(
             x=[margin, sheet_width - margin, sheet_width - margin, margin, margin],
             y=[margin, margin, sheet_length - margin, sheet_length - margin, margin],
             mode="lines",
-            name="Margin Boundary",
+            name="Margin",
             line=dict(color="red", width=1, dash="dash")
         ))
 
-        # Render Komponen (Biru & Merah)
-        colors = ["rgba(51, 136, 255, 0.85)", "rgba(255, 68, 68, 0.85)"]
-        
+        # 3. Batch Combined Arrays (Instan 1-Trace per Warna)
+        x_blue, y_blue = [], []
+        x_red, y_red = [], []
+
         for poly, idx in placed_polygons:
-            x, y = poly.exterior.xy
-            fig_sheet.add_trace(go.Scatter(
-                x=list(x),
-                y=list(y),
-                fill="toself",
-                fillcolor=colors[idx % 2],
-                line=dict(color="black", width=0.8),
-                showlegend=False
-            ))
+            px, py = poly.exterior.xy
+            if idx % 2 == 0:
+                x_blue.extend(list(px) + [None])
+                y_blue.extend(list(py) + [None])
+            else:
+                x_red.extend(list(px) + [None])
+                y_red.extend(list(py) + [None])
+
+        # Render Komponen Biru
+        fig_sheet.add_trace(go.Scatter(
+            x=x_blue, y=y_blue,
+            fill="toself",
+            fillcolor="rgba(51, 136, 255, 0.85)",
+            line=dict(color="black", width=0.8),
+            name="Komponen 1"
+        ))
+
+        # Render Komponen Merah
+        fig_sheet.add_trace(go.Scatter(
+            x=x_red, y=y_red,
+            fill="toself",
+            fillcolor="rgba(255, 68, 68, 0.85)",
+            line=dict(color="black", width=0.8),
+            name="Komponen 2"
+        ))
 
         fig_sheet.update_layout(
-            title=f"Full Sheet Layout (Real-Time Plotly) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}",
+            title=f"Full Sheet Layout (Instant Batch Render) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}",
             xaxis=dict(range=[-5, sheet_width + 5], title="Width (cm)"),
             yaxis=dict(range=[-5, sheet_length + 5], title="Length (cm)", scaleanchor="x", scaleratio=1),
             height=600,
