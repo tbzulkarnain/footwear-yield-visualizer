@@ -1,14 +1,15 @@
 import streamlit as st
 import cv2
 import numpy as np
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from shapely.geometry import Polygon
 from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("⚡ Footwear Material Yield Visualizer (Ultra-Fast Plotly)")
-st.caption("Atur Pasangan & Baris secara Interaktif -> Hasil Render Langsung Muncul Instan")
+st.title("⚡ Footwear Material Yield Visualizer (Instan & Bebas Tabrakan)")
+st.caption("Atur Posisi Pasangan & Jarak Baris Aman secara Real-Time tanpa Waiting Time")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -76,9 +77,6 @@ if uploaded_file is not None:
         bw = base_poly.bounds[2] - base_poly.bounds[0]
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
-        # ==========================================
-        # STEP 1: SET PASANGAN MASTER
-        # ==========================================
         st.markdown("---")
         st.subheader("🛠️ Step 1: Atur Pasangan Master (Unit Pair)")
 
@@ -106,7 +104,7 @@ if uploaded_file is not None:
             p2_zero = translate(p2_rot, xoff=-minx2, yoff=-miny2)
             poly2_custom = translate(p2_zero, xoff=shift_x2, yoff=shift_y2)
 
-        # Normalisasi Unit Pair
+        # Hitung Normalisasi Pair
         p_minx = min(poly1_custom.bounds[0], poly2_custom.bounds[0])
         p_miny = min(poly1_custom.bounds[1], poly2_custom.bounds[1])
         p_maxx = max(poly1_custom.bounds[2], poly2_custom.bounds[2])
@@ -118,24 +116,17 @@ if uploaded_file is not None:
         poly1_unit = translate(poly1_custom, xoff=-p_minx, yoff=-p_miny)
         poly2_unit = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
 
-        # PREVIEW PASANGAN MASTER (FAST PLOTLY)
         with col_prev:
-            fig_p = go.Figure()
+            fig_p, ax_p = plt.subplots(figsize=(4.5, 4.5))
+            ax_p.fill(*poly1_unit.exterior.xy, alpha=0.75, fc='#3388ff', ec='black', linewidth=1.5, label='Komponen 1')
+            ax_p.fill(*poly2_unit.exterior.xy, alpha=0.75, fc='#ff4444', ec='black', linewidth=1.5, label='Komponen 2')
+            ax_p.set_aspect('equal')
+            ax_p.legend(loc='upper right')
+            plt.title("Preview Master Pair", fontsize=10)
+            st.pyplot(fig_p)
 
-            x1, y1 = poly1_unit.exterior.xy
-            fig_p.add_trace(go.Scatter(x=list(x1), y=list(y1), fill="toself", name="Pcs 1 (Biru)", fillcolor="rgba(51, 136, 255, 0.85)", line=dict(color="black", width=1)))
-
-            x2, y2 = poly2_unit.exterior.xy
-            fig_p.add_trace(go.Scatter(x=list(x2), y=list(y2), fill="toself", name="Pcs 2 (Merah)", fillcolor="rgba(255, 68, 68, 0.85)", line=dict(color="black", width=1)))
-
-            fig_p.update_layout(title="Preview Master Pair Unit", yaxis=dict(scaleanchor="x", scaleratio=1), height=280, margin=dict(l=10, r=10, t=30, b=10))
-            st.plotly_chart(fig_p, use_container_width=True)
-
-        # ==========================================
-        # STEP 2: SET INTERLOCK BARIS
-        # ==========================================
         st.markdown("---")
-        st.subheader("🚀 Step 2: Atur Interlock Antar-Baris")
+        st.subheader("🚀 Step 2: Atur Interlock Antar-Baris (Live Update)")
 
         col_r1, col_r2 = st.columns(2)
         with col_r1:
@@ -143,7 +134,7 @@ if uploaded_file is not None:
         with col_r2:
             r2_shift_y = st.slider("↕️ Jarak Vertikal Antar-Baris (cm)", float(unit_h * 0.3), float(unit_h * 1.2), float(unit_h * 0.7), step=0.1)
 
-        # CEK TABRAKAN BARIS 1 & 2
+        # DETEKSI TABRAKAN SEPENUHNYA INSTAN SAAT SLIDER DIGESER
         r2_p1 = translate(poly1_unit, xoff=r2_shift_x, yoff=r2_shift_y)
         r2_p2 = translate(poly2_unit, xoff=r2_shift_x, yoff=r2_shift_y)
 
@@ -157,7 +148,7 @@ if uploaded_file is not None:
         else:
             st.success("✅ Layout 100% Bebas Tabrakan!")
 
-        # GENERATE NESTING GEOMETRI
+        # GENERATE LAYOUT INSTAN
         placed_polygons = []
         total_pattern_area = 0.0
 
@@ -218,66 +209,30 @@ if uploaded_file is not None:
 
         st.info(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
-        # ==========================================
-        # VISUALISASI FULL SHEET LAYOUT (BATCH TRACE RENDERING)
-        # ==========================================
-        fig_sheet = go.Figure()
+        # VISUALISASI FULL SHEET
+        fig, ax = plt.subplots(figsize=(14, 8))
+        
+        sheet_rect = patches.Rectangle((0, 0), sheet_width, sheet_length, linewidth=2, edgecolor='black', facecolor='#F8F9FA')
+        ax.add_patch(sheet_rect)
+        
+        margin_rect = patches.Rectangle((margin, margin), sheet_width - (2*margin), sheet_length - (2*margin), 
+                                        linewidth=1, edgecolor='red', linestyle='--')
+        ax.add_patch(margin_rect)
 
-        # 1. Batas Lembaran Material
-        fig_sheet.add_trace(go.Scatter(
-            x=[0, sheet_width, sheet_width, 0, 0],
-            y=[0, 0, sheet_length, sheet_length, 0],
-            mode="lines",
-            name="Sheet",
-            line=dict(color="black", width=2)
-        ))
+        if max_used_y > 0:
+            ax.axhline(y=max_used_y, color='blue', linestyle=':', linewidth=1.5, label='Actual Cut Line')
 
-        # 2. Batas Margin
-        fig_sheet.add_trace(go.Scatter(
-            x=[margin, sheet_width - margin, sheet_width - margin, margin, margin],
-            y=[margin, margin, sheet_length - margin, sheet_length - margin, margin],
-            mode="lines",
-            name="Margin",
-            line=dict(color="red", width=1, dash="dash")
-        ))
-
-        # 3. Batch Combined Arrays (Instan 1-Trace per Warna)
-        x_blue, y_blue = [], []
-        x_red, y_red = [], []
+        colors = ['#3388ff', '#ff4444']
 
         for poly, idx in placed_polygons:
-            px, py = poly.exterior.xy
-            if idx % 2 == 0:
-                x_blue.extend(list(px) + [None])
-                y_blue.extend(list(py) + [None])
-            else:
-                x_red.extend(list(px) + [None])
-                y_red.extend(list(py) + [None])
+            x, y = poly.exterior.xy
+            ax.fill(x, y, alpha=0.85, fc=colors[idx % 2], ec='black', linewidth=1)
 
-        # Render Komponen Biru
-        fig_sheet.add_trace(go.Scatter(
-            x=x_blue, y=y_blue,
-            fill="toself",
-            fillcolor="rgba(51, 136, 255, 0.85)",
-            line=dict(color="black", width=0.8),
-            name="Komponen 1"
-        ))
-
-        # Render Komponen Merah
-        fig_sheet.add_trace(go.Scatter(
-            x=x_red, y=y_red,
-            fill="toself",
-            fillcolor="rgba(255, 68, 68, 0.85)",
-            line=dict(color="black", width=0.8),
-            name="Komponen 2"
-        ))
-
-        fig_sheet.update_layout(
-            title=f"Full Sheet Layout (Instant Batch Render) | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}",
-            xaxis=dict(range=[-5, sheet_width + 5], title="Width (cm)"),
-            yaxis=dict(range=[-5, sheet_length + 5], title="Length (cm)", scaleanchor="x", scaleratio=1),
-            height=600,
-            margin=dict(l=20, r=20, t=40, b=20)
-        )
-
-        st.plotly_chart(fig_sheet, use_container_width=True)
+        ax.set_xlim(-5, sheet_width + 5)
+        ax.set_ylim(-5, sheet_length + 5)
+        ax.set_aspect('equal')
+        plt.title(f"Instant Real-Time Layout | Comp. Yield: {component_yield:.1f}% | Pairs: {pairs_completed}", fontsize=12)
+        plt.xlabel("Width (cm)")
+        plt.ylabel("Length (cm)")
+        
+        st.pyplot(fig)
