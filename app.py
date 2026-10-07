@@ -170,7 +170,7 @@ if uploaded_file is not None:
                 help="Geser baris ganjil/genap agar puncak komponen masuk ke lekukan pasangannya."
             )
 
-        # GENERATE FULL SHEET NESTING
+        # GENERATE FULL SHEET NESTING (KONSISTEN UNTUK SEMUA BARIS)
         placed_polygons = []
         total_pattern_area = 0.0
 
@@ -181,22 +181,30 @@ if uploaded_file is not None:
         curr_y = margin
 
         while item_idx < total_items and (curr_y + min(poly1_unit.bounds[3], poly2_unit.bounds[3])) <= (sheet_length - margin):
-            # Hitung offset pergeseran horisontal untuk pola berselang-seling (Honeycomb)
-            x_shift_row = (row_idx % 2) * row_x_stagger
-            curr_x = margin + x_shift_row
+            # Pergeseran X selang-seling konsisten untuk baris ganjil (1, 3, 5...) dan genap (0, 2, 4...)
+            if row_idx % 2 == 1:
+                x_start = margin + row_x_stagger
+            else:
+                x_start = margin
+
+            curr_x = x_start
+
+            # Jika pergeseran X membuat batas awal di luar margin kiri, sesuaikan agar tetap terisi
+            while curr_x < margin:
+                curr_x += (unit_w + inter_gap)
 
             while item_idx < total_items and (curr_x + unit_w) <= (sheet_width - margin):
-                # Komponen 1
+                # Komponen 1 (Biru)
                 p1 = translate(poly1_unit, xoff=curr_x, yoff=curr_y)
-                if p1.bounds[2] <= (sheet_width - margin) and p1.bounds[3] <= (sheet_length - margin):
+                if p1.bounds[2] <= (sheet_width - margin) and p1.bounds[3] <= (sheet_length - margin) and p1.bounds[0] >= margin:
                     placed_polygons.append((p1, 0))
                     total_pattern_area += p1.area
                     item_idx += 1
 
-                # Komponen 2
+                # Komponen 2 (Merah)
                 if item_idx < total_items:
                     p2 = translate(poly2_unit, xoff=curr_x, yoff=curr_y)
-                    if p2.bounds[2] <= (sheet_width - margin) and p2.bounds[3] <= (sheet_length - margin):
+                    if p2.bounds[2] <= (sheet_width - margin) and p2.bounds[3] <= (sheet_length - margin) and p2.bounds[0] >= margin:
                         placed_polygons.append((p2, 1))
                         total_pattern_area += p2.area
                         item_idx += 1
