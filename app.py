@@ -6,8 +6,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("⚡ Footwear Material Yield Visualizer (Auto + Manual Precision)")
-st.caption("Pola Otomatis Tampil Instan + Slider Fine-Tuning Presisi Bebas Tabrakan")
+st.title("⚡ Footwear Material Yield Visualizer (Full Control & Real-Time SVG)")
+st.caption("Atur Pasangan Master (Pcs 1 & 2) -> Atur Interlock Baris -> Hasil Tampil Instan")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -63,25 +63,22 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
 
 # --- RENDERER SVG NATIVE (SUPER FAST) ---
 def generate_svg_layout(sheet_w, sheet_l, margin_v, placed_polys, max_y):
-    scale = 8  # skala piksel per cm
+    scale = 8
     svg_w = sheet_w * scale
     svg_h = sheet_l * scale
 
     svg_code = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg" style="background-color: #F8F9FA; border: 2px solid #333; border-radius: 8px;">'
     
-    # Area Margin
     m_x = margin_v * scale
     m_y = margin_v * scale
     m_w = (sheet_w - 2 * margin_v) * scale
     m_h = (sheet_l - 2 * margin_v) * scale
     svg_code += f'<rect x="{m_x}" y="{m_y}" width="{m_w}" height="{m_h}" fill="none" stroke="#ff4444" stroke-dasharray="4" stroke-width="1.5"/>'
 
-    # Garis Batas Potong Aktif
     if max_y > 0:
         c_y = max_y * scale
         svg_code += f'<line x1="0" y1="{c_y}" x2="{svg_w}" y2="{c_y}" stroke="#3388ff" stroke-dasharray="3" stroke-width="2"/>'
 
-    # Render Polygons Component
     colors = ['#3388ff', '#ff4444']
     for poly, idx in placed_polys:
         pts = list(poly.exterior.coords)
@@ -106,44 +103,74 @@ if uploaded_file is not None:
         bw = base_poly.bounds[2] - base_poly.bounds[0]
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
-        # 1. BUAT UNIT PAIR PAIR INTERLOCK (ROTASI 180 DEGREE)
-        p2_rot = rotate(base_poly, 180, origin='center')
-        minx2, miny2, _, _ = p2_rot.bounds
-        p2_zero = translate(p2_rot, xoff=-minx2, yoff=-miny2)
+        # ==========================================
+        # STEP 1: ATUR PASANGAN MASTER (KOMPONEN 1 & 2)
+        # ==========================================
+        st.markdown("---")
+        st.subheader("🛠️ Step 1: Atur Pasangan Master (Unit Pair)")
 
-        # Standar awal kerapatan pasangan
-        poly2_cand = translate(p2_zero, xoff=bw * 0.35, yoff=bh * 0.15)
+        col_c1, col_c2 = st.columns(2)
 
-        p_minx = min(base_poly.bounds[0], poly2_cand.bounds[0])
-        p_miny = min(base_poly.bounds[1], poly2_cand.bounds[1])
-        p_maxx = max(base_poly.bounds[2], poly2_cand.bounds[2])
-        p_maxy = max(base_poly.bounds[3], poly2_cand.bounds[3])
+        with col_c1:
+            st.markdown("### 🔵 Komponen 1 (Biru)")
+            rot1 = st.slider("Rotasi Pcs 1 (°)", 0, 360, 0, step=5, key="r1")
+            shift_x1 = st.slider("Geser X Pcs 1 (cm)", -float(bw), float(bw * 1.5), 0.0, step=0.1, key="sx1")
+            shift_y1 = st.slider("Geser Y Pcs 1 (cm)", -float(bh), float(bh * 1.5), 0.0, step=0.1, key="sy1")
 
-        poly1_unit = translate(base_poly, xoff=-p_minx, yoff=-p_miny)
-        poly2_unit = translate(poly2_cand, xoff=-p_minx, yoff=-p_miny)
+            p1_rot = rotate(base_poly, rot1, origin='center')
+            minx1, miny1, _, _ = p1_rot.bounds
+            p1_zero = translate(p1_rot, xoff=-minx1, yoff=-miny1)
+            poly1_custom = translate(p1_zero, xoff=shift_x1, yoff=shift_y1)
+
+        with col_c2:
+            st.markdown("### 🔴 Komponen 2 (Merah)")
+            rot2 = st.slider("Rotasi Pcs 2 (°)", 0, 360, 180, step=5, key="r2")
+            shift_x2 = st.slider("Geser X Pcs 2 (cm)", -float(bw), float(bw * 1.5), float(bw * 0.4), step=0.1, key="sx2")
+            shift_y2 = st.slider("Geser Y Pcs 2 (cm)", -float(bh), float(bh * 1.5), float(bh * 0.2), step=0.1, key="sy2")
+
+            p2_rot = rotate(base_poly, rot2, origin='center')
+            minx2, miny2, _, _ = p2_rot.bounds
+            p2_zero = translate(p2_rot, xoff=-minx2, yoff=-miny2)
+            poly2_custom = translate(p2_zero, xoff=shift_x2, yoff=shift_y2)
+
+        # Hitung Normalisasi Unit Pair
+        p_minx = min(poly1_custom.bounds[0], poly2_custom.bounds[0])
+        p_miny = min(poly1_custom.bounds[1], poly2_custom.bounds[1])
+        p_maxx = max(poly1_custom.bounds[2], poly2_custom.bounds[2])
+        p_maxy = max(poly1_custom.bounds[3], poly2_custom.bounds[3])
 
         unit_w = p_maxx - p_minx
         unit_h = p_maxy - p_miny
 
-        # 2. SLIDER CONTROL KONTROL MANUAL FINE-TUNING
+        poly1_unit = translate(poly1_custom, xoff=-p_minx, yoff=-p_miny)
+        poly2_unit = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
+
+        # Cek Tabrakan Komponen 1 & 2 Sendiri
+        pair_collision = poly1_unit.buffer(inter_gap / 2).intersects(poly2_unit.buffer(inter_gap / 2))
+        if pair_collision:
+            st.warning("⚠️ Komponen 1 dan Komponen 2 di Step 1 saling bertabrakan! Geser slider Komponen 2 agar tidak menindih.")
+
+        # ==========================================
+        # STEP 2: ATUR INTERLOCK ANTAR-BARIS
+        # ==========================================
         st.markdown("---")
-        st.subheader("🎛️ Fine-Tuning Posisi & Interlock (Manual Control)")
+        st.subheader("🚀 Step 2: Atur Interlock Antar-Baris")
 
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             r2_shift_x = st.slider("↔️ Pergeseran Horizontal Baris Genap (cm)", 
-                                  min_value=0.0, 
+                                  min_value=-float(unit_w), 
                                   max_value=float(unit_w), 
                                   value=float(unit_w * 0.5), 
                                   step=0.1)
         with col_s2:
             r2_shift_y = st.slider("↕️ Jarak Vertikal Antar-Baris (cm)", 
                                   min_value=float(unit_h * 0.2), 
-                                  max_value=float(unit_h * 1.3), 
-                                  value=float(unit_h * 0.75), 
+                                  max_value=float(unit_h * 1.5), 
+                                  value=float(unit_h * 0.8), 
                                   step=0.1)
 
-        # 3. DETEKSI BENTURAN REAL-TIME
+        # DETEKSI TABRAKAN REAL-TIME BARIS 1, 2, 3
         u1_buf = poly1_unit.buffer(inter_gap / 2)
         u2_buf = poly2_unit.buffer(inter_gap / 2)
 
@@ -155,12 +182,12 @@ if uploaded_file is not None:
         collide_12 = r2_u1.intersects(u1_buf) or r2_u1.intersects(u2_buf) or r2_u2.intersects(u1_buf) or r2_u2.intersects(u2_buf)
         collide_23 = r3_u1.intersects(r2_u1) or r3_u1.intersects(r2_u2) or r3_u2.intersects(r2_u1) or r3_u2.intersects(r2_u2)
 
-        if collide_12 or collide_23:
-            st.error("⚠️ POLA BERTAGRAKAN! Geser slider 'Jarak Vertikal Antar-Baris' ke kanan sampai indikator ini menjadi hijau.")
+        if pair_collision or collide_12 or collide_23:
+            st.error("⚠️ POLA BERTAGRAKAN! Geser slider 'Jarak Vertikal' atau atur ulang Posisi Komponen 2.")
         else:
             st.success("✅ LAYOUT SAFE & BEBAS TABRAKAN!")
 
-        # 4. GENERATE LAYOUT DI KANVAS LEMBARAN
+        # GENERATE LAYOUT FULL SHEET
         placed_polygons = []
         total_pattern_area = 0.0
 
@@ -182,14 +209,12 @@ if uploaded_file is not None:
                 curr_x += (unit_w + inter_gap)
 
             while item_idx < total_items and (curr_x + unit_w) <= (sheet_width - margin):
-                # Component 1 (Biru)
                 p1 = translate(poly1_unit, xoff=curr_x, yoff=row_y)
                 if p1.bounds[2] <= (sheet_width - margin) and p1.bounds[3] <= (sheet_length - margin) and p1.bounds[0] >= margin:
                     placed_polygons.append((p1, 0))
                     total_pattern_area += p1.area
                     item_idx += 1
 
-                # Component 2 (Merah)
                 if item_idx < total_items:
                     p2 = translate(poly2_unit, xoff=curr_x, yoff=row_y)
                     if p2.bounds[2] <= (sheet_width - margin) and p2.bounds[3] <= (sheet_length - margin) and p2.bounds[0] >= margin:
@@ -223,6 +248,6 @@ if uploaded_file is not None:
 
         st.info(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
-        # RENDER SVG VISUAL
+        # RENDER SVG VISUAL INSTAN
         svg_html = generate_svg_layout(sheet_width, sheet_length, margin, placed_polygons, max_used_y)
         st.components.v1.html(svg_html, height=650, scrolling=True)
