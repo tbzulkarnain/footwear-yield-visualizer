@@ -10,27 +10,38 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (ProCost Standard)")
+st.title("⚡ Footwear Material Yield Visualizer")
 st.markdown("---")
 
 # ============================================================
 # TAHAP 1: SETUP PARAMETER UTAMA DI HALAMAN UTAMA (COMPACT GRID)
 # ============================================================
 
-st.subheader("📋 Setup Parameter Bahan & Target")
-col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+st.subheader("📋 Material & Target Setup")
+col_p1, col_p1_unit, col_p2, col_p3, col_p4 = st.columns([1.5, 1, 1.2, 1.2, 1.2])
 
 with col_p1:
-    sheet_width = st.number_input("Lebar Material (cm)", value=140.0, step=5.0)
+    material_width_input = st.number_input("Material Width", value=44.0, step=1.0, format="%.2f")
+with col_p1_unit:
+    width_unit = st.selectbox("Width Unit", ["inch", "cm", "m"], index=0)
+
+# Konversi lebar material ke cm berdasarkan pilihan unit
+if width_unit == "inch":
+    sheet_width = material_width_input * 2.54
+elif width_unit == "m":
+    sheet_width = material_width_input * 100.0
+else:
+    sheet_width = material_width_input
+
 with col_p2:
-    sheet_length = st.number_input("Panjang Material (cm)", value=100.0, step=5.0)
+    sheet_length = st.number_input("Material Length (cm)", value=100.0, step=5.0)
 with col_p3:
-    margin = st.number_input("Margin Pinggir (cm)", value=1.0, step=0.5)
+    margin = st.number_input("Margin (cm)", value=1.0, step=0.5)
 with col_p4:
-    target_pairs = st.number_input("Target Sepatu (Pasang)", value=50, min_value=1, step=1)
+    target_pairs = st.number_input("Target Pairs", value=50, min_value=1, step=1)
     target_pieces = target_pairs * 2
 
-uploaded_file = st.file_uploader("Upload Gambar Pattern Component Master", type=["png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("Upload Pattern Component Master Image", type=["png", "jpg", "jpeg"])
 
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE
@@ -105,25 +116,25 @@ if uploaded_file is not None:
     raw_polygons = extract_polygons_from_bytes(file_bytes)
 
     if not raw_polygons:
-        st.error("Gagal mendeteksi bentuk pola dari gambar. Pastikan garis kontur pola jelas.")
+        st.error("Failed to detect pattern shapes from the image. Ensure clear contour lines.")
     else:
         base_poly = raw_polygons[0]
         bw = base_poly.bounds[2] - base_poly.bounds[0]
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
         st.markdown("---")
-        st.subheader("🛠️ Konfigurasi Tata Letak & Fine-tune Presisi")
+        st.subheader("🛠️ Layout Configuration & Fine-Tuning")
 
         col_ctrl, col_prev = st.columns([1.1, 0.9])
 
         with col_ctrl:
             category = st.selectbox(
-                "Pilih Kategori ProCost",
+                "Select Layout Category",
                 [
-                    "Category 1: One Way Straight (1 Arah Lurus)",
-                    "Category 2: Two Way Interlock (2 Arah 180°)",
-                    "Category 3: One Way Staggered (1 Arah Zig-Zag Baris)",
-                    "Category 4: Two Way Staggered (2 Arah Zig-Zag Baris)"
+                    "Category 1: One Way Straight",
+                    "Category 2: Two Way Interlock",
+                    "Category 3: One Way Staggered",
+                    "Category 4: Two Way Staggered"
                 ]
             )
 
@@ -132,23 +143,23 @@ if uploaded_file is not None:
 
             c_rot1, c_rot2 = st.columns(2)
             with c_rot1:
-                rot_p1 = st.number_input("Rotasi Pcs 1 (°)", min_value=0, max_value=360, value=90, step=5)
+                rot_p1 = st.number_input("Rotation Pcs 1 (°)", min_value=0, max_value=360, value=90, step=5)
             with c_rot2:
                 if is_twoway_cat:
                     default_rot2 = (rot_p1 + 180) % 360
-                    rot_p2 = st.number_input("Rotasi Pcs 2 (°)", min_value=0, max_value=360, value=int(default_rot2), step=5)
+                    rot_p2 = st.number_input("Rotation Pcs 2 (°)", min_value=0, max_value=360, value=int(default_rot2), step=5)
                 else:
                     rot_p2 = rot_p1
 
-            st.markdown("##### 🎛️ Penyesuaian Spasi Grid (Number Input Presisi)")
+            st.markdown("##### 🎛️ Spacing Adjustments")
             c_ft1, c_ft2 = st.columns(2)
             with c_ft1:
-                fine_tune_x = st.number_input("Jarak Kolom / Step X", value=0.0, step=0.1, format="%.2f")
+                fine_tune_x = st.number_input("Column Gap / Step X", value=0.0, step=0.1, format="%.2f")
             with c_ft2:
-                fine_tune_y = st.number_input("Jarak Baris / Pitch Y", value=0.0, step=0.1, format="%.2f")
+                fine_tune_y = st.number_input("Row Gap / Pitch Y", value=0.0, step=0.1, format="%.2f")
 
             if is_staggered_cat:
-                preview_shift_x = st.number_input("Geser Baris 2 (Offset X)", value=0.0, step=0.1, format="%.2f")
+                preview_shift_x = st.number_input("Row 2 Shift (Offset X)", value=0.0, step=0.1, format="%.2f")
             else:
                 preview_shift_x = 0.0
 
@@ -206,7 +217,7 @@ if uploaded_file is not None:
             preview_items.append((translate(p2, xoff=row2_x2, yoff=row2_y), 1))
 
         with col_prev:
-            st.markdown("##### 👁️ Live Preview Grid (2 Baris)")
+            st.markdown("##### 👁️ Live Preview Grid (2 Rows)")
             st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.2f} cm | Pitch Y: {pitch_y:.2f} cm")
             svg_preview = generate_svg_preview_grid(preview_items, width_cm=60, height_cm=40)
             st.components.v1.html(svg_preview, height=320, scrolling=False)
@@ -216,9 +227,9 @@ if uploaded_file is not None:
         # ============================================================
 
         st.markdown("---")
-        st.subheader("🚀 Render Hasil Penuh ke Lembaran Bahan")
+        st.subheader("🚀 Render Full Sheet Layout")
 
-        if st.button("📊 Proses Render Layout ProCost", type="primary", use_container_width=True):
+        if st.button("📊 Process Layout Rendering", type="primary", use_container_width=True):
             placed_polygons = []
             total_pattern_area = 0.0
             total_items = target_pieces
@@ -311,7 +322,7 @@ if uploaded_file is not None:
                     row_idx += 1
 
             # ============================================================
-            # PERHITUNGAN STANDAR PROCOST DENGAN KOREKSI YIELD
+            # PERHITUNGAN STANDAR METRIK (CLEAN FORMATTING & YIELD)
             # ============================================================
             pieces_completed = len(placed_polygons)
             pairs_completed = max(pieces_completed // 2, 1)
@@ -325,7 +336,7 @@ if uploaded_file is not None:
             
             # Gross Area per Pair (cm²)
             used_sheet_area = sheet_width * max_used_y
-            gross_area_per_pair = used_sheet_area / pairs_completed
+            gross_area_per_pair = used_sheet_area / pairs_completed if pairs_completed > 0 else 0.0
 
             # Waste Area per Pair (cm²)
             waste_area_per_pair = gross_area_per_pair - net_area_per_pair
@@ -333,24 +344,22 @@ if uploaded_file is not None:
             # Efficiency (%)
             efficiency = (net_area_per_pair / gross_area_per_pair) * 100 if gross_area_per_pair > 0 else 0.0
 
-            # KOREKSI RUMUS YIELD PROCOST:
-            # Yield (per unit length, misal per 100 cm / per meter panjang bahan)
-            # Rumus ProCost standar: Pairs / Panjang Bahan (dalam satuan meter atau unit standar)
+            # Yield Formula (meter / pair)
             used_length_m = max_used_y / 100.0  # Konversi cm ke meter
-            procost_yield = pairs_completed / used_length_m if used_length_m > 0 else 0.0
+            yield_value = used_length_m / pairs_completed if pairs_completed > 0 else 0.0
 
-            # TAMPILAN TABEL/METRIK ALA PROCOST
-            st.markdown("### 📊 ProCost Summary Table")
+            # TAMPILAN TABEL/METRIK (ENGLISH, NO TRUNCATION '...', NO 'PROCOST')
+            st.markdown("### 📊 Summary Report")
             
             col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
-            col_m1.metric("Parts per pair", "2.00")
-            col_m2.metric("Net Area / pair", f"{net_area_per_pair:.4f} cm²")
-            col_m3.metric("Gross Area / pair", f"{gross_area_per_pair:.4f} cm²")
-            col_m4.metric("Waste Area / pair", f"{waste_area_per_pair:.4f} cm²")
-            col_m5.metric("Efficiency (%)", f"{efficiency:.2f} %")
-            col_m6.metric("Yield (per meter)", f"{procost_yield:.4f}")
+            col_m1.metric("Parts per pair", f"{2.00:.2f}")
+            col_m2.metric("Net Area / pair", f"{net_area_per_pair:.4f}")
+            col_m3.metric("Gross Area / pair", f"{gross_area_per_pair:.4f}")
+            col_m4.metric("Waste Area / pair", f"{waste_area_per_pair:.4f}")
+            col_m5.metric("Efficiency (%)", f"{efficiency:.2f}%")
+            col_m6.metric("Yield (per meter)", f"{yield_value:.4f}")
 
-            st.info(f"💡 **Info Produksi:** Terpasang {pairs_completed} pasang ({pieces_completed} pcs) | Panjang Terpakai: **{max_used_y:.2f} cm** dari {sheet_length:.1f} cm")
+            st.info(f"💡 **Production Info:** Placed {pairs_completed} pairs ({pieces_completed} pcs) | Used Length: **{max_used_y:.2f} cm** out of {sheet_length:.1f} cm (Width: {sheet_width:.1f} cm)")
 
             # RENDER SVG FULL SHEET
             scale_f = 6.0
