@@ -3,3 +3,4 @@ opencv-python-headless
 numpy
 shapely
 pillow
+streamlit-drawable-canvas
