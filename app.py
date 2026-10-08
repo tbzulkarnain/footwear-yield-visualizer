@@ -227,9 +227,9 @@ if uploaded_file is not None:
         # ============================================================
 
         st.markdown("---")
-        st.subheader("🚀 Render Full Sheet Layout")
+        st.subheader("🚀 Nesting Layout")
 
-        if st.button("📊 Process Layout Rendering", type="primary", use_container_width=True):
+        if st.button("📊 Process Layout", type="primary", use_container_width=True):
             placed_polygons = []
             total_pattern_area = 0.0
             total_items = target_pieces
