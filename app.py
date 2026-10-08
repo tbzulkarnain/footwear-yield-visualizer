@@ -10,14 +10,14 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (Zig-Zag 2-Row Repeat)")
-st.caption("Step 1 Setup -> Duplicate 2-Row Stagger Interlock Grid")
+st.title("⚡ Footwear Material Yield Visualizer (Auto Contour Nesting)")
+st.caption("Algoritma Auto-Nesting Geometris -> Menata & Merapatkan Komponen Otomatis Bebas Tabrakan")
 
 # ============================================================
 # SIDEBAR PARAMETER
 # ============================================================
 
-st.sidebar.header("⚙️ Parameter Lembaran Material")
+st.sidebar.header("⚙️ Parameter Lembaran & Nesting")
 
 sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value=140.0, step=5.0)
 sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
@@ -25,8 +25,12 @@ margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, st
 inter_gap = st.sidebar.number_input("Jarak Antar Pola / Interlacing Gap (cm)", value=0.1, step=0.05)
 target_pairs = st.sidebar.number_input("Jumlah Pasang Target (Pairs)", value=50, min_value=1, step=1)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔄 Opsi Rotasi Nesting")
+allow_flip = st.sidebar.checkbox("Izinkan Rotasi Pasangan (0° & 180° / Interlock)", value=True)
+
 # ============================================================
-# EXTRACT POLYGONS
+# EXTRACT POLYGONS FROM IMAGE
 # ============================================================
 
 @st.cache_data
@@ -71,29 +75,84 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
     except Exception:
         return []
 
-def generate_svg_3pcs_preview(p1, p2, p3, width_cm=50, height_cm=40):
-    scale = 10
-    svg_w = width_cm * scale
-    svg_h = height_cm * scale
+# ============================================================
+# AUTOMATIC DYNAMIC NESTING ENGINE
+# ============================================================
 
-    svg_code = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg" style="background-color:#F8F9FA; border:2px dashed #666; border-radius:8px;">'
-    items = [(p1, "#3388ff"), (p2, "#ff4444"), (p3, "#28a745")]
+def run_auto_nesting(base_poly, sheet_w, sheet_l, edge_margin, gap, total_pcs, allow_rot_180):
+    placed_items = []
+    placed_buffers = []
+    total_area = 0.0
 
-    for poly, col in items:
-        pts = list(poly.exterior.coords)
-        pts_str = " ".join([f"{p[0] * scale:.1f},{p[1] * scale:.1f}" for p in pts])
-        svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="1" opacity="0.85"/>'
+    # Orientasi yang disiapkan (Normal 0° & Inverted 180°)
+    poly_0 = translate(base_poly, xoff=-base_poly.bounds[0], yoff=-base_poly.bounds[1])
+    poly_180 = rotate(poly_0, 180, origin='center')
+    poly_180 = translate(poly_180, xoff=-poly_180.bounds[0], yoff=-poly_180.bounds[1])
 
-    svg_code += "</svg>"
-    return svg_code
+    variants = [poly_0]
+    if allow_rot_180:
+        variants.append(poly_180)
 
-def polygons_collide(poly_a, poly_b, gap=0.1):
-    safe_a = poly_a.buffer(gap / 2)
-    safe_b = poly_b.buffer(gap / 2)
-    return safe_a.intersects(safe_b)
+    step_grid = 0.25  # Resolusi pencarian presisi (cm)
+
+    for i in range(total_pcs):
+        best_cand = None
+        best_buf = None
+        best_y = float('inf')
+        best_x = float('inf')
+
+        # Coba tiap orientasi rotasi
+        for var_idx, p_var in enumerate(variants):
+            w_var = p_var.bounds[2] - p_var.bounds[0]
+            h_var = p_var.bounds[3] - p_var.bounds[1]
+
+            # Loop Y dari atas lembaran ke bawah
+            curr_y = edge_margin
+            while curr_y + h_var <= sheet_l - edge_margin:
+                # Loop X dari kiri ke kanan
+                curr_x = edge_margin
+                while curr_x + w_var <= sheet_w - edge_margin:
+                    cand = translate(p_var, xoff=curr_x, yoff=curr_y)
+                    cand_buf = cand.buffer(gap / 2)
+
+                    # Check tabrakan dengan komponen yang sudah terpasang
+                    has_collision = False
+                    for existing_buf in placed_buffers:
+                        if cand_buf.intersects(existing_buf):
+                            has_collision = True
+                            break
+
+                    if not has_collision:
+                        # Dapatkan posisi paling rapat (paling atas & paling kiri)
+                        if (curr_y < best_y) or (abs(curr_y - best_y) < 0.01 and curr_x < best_x):
+                            best_y = curr_y
+                            best_x = curr_x
+                            best_cand = (cand, var_idx)
+                            best_buf = cand_buf
+
+                        # Begitu dapat posisi X aman di Y ini, lanjut ke Y berikutnya untuk efisiensi
+                        break
+
+                    curr_x += step_grid
+
+                # Jika sudah menemukan opsi di posisi Y yang sangat rapat, pertimbangkan
+                if best_cand is not None and curr_y > best_y + 2.0:
+                    break
+
+                curr_y += step_grid
+
+        if best_cand is not None:
+            placed_items.append(best_cand)
+            placed_buffers.append(best_buf)
+            total_area += best_cand[0].area
+        else:
+            # Tidak ada ruang tersisa di lembaran
+            break
+
+    return placed_items, total_area
 
 # ============================================================
-# MAIN APP LOGIC
+# MAIN APP
 # ============================================================
 
 uploaded_file = st.file_uploader("Upload Gambar Pattern Component Master", type=["png", "jpg", "jpeg"])
@@ -109,191 +168,72 @@ if uploaded_file is not None:
         bw = base_poly.bounds[2] - base_poly.bounds[0]
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
-        # STEP 1: CONTROLS
+        total_pcs_target = target_pairs * 2
+
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Atur Posisi Master 3 Komponen")
+        st.subheader("🤖 Automatic Nesting & Layout Generation")
+        st.info(f"Target Komponen: **{total_pcs_target} pcs** ({target_pairs} Pasang) | Ukuran Pola: **{bw:.2f} x {bh:.2f} cm**")
 
-        col_ctrl, col_prev = st.columns([1.1, 0.9])
+        if st.button("🚀 Jalankan Auto-Nesting (Rapatkan Komponen)", type="primary"):
+            with st.spinner("Sedang menghitung kontur & menata pola secara otomatis..."):
+                placed_polygons, total_pattern_area = run_auto_nesting(
+                    base_poly,
+                    sheet_width,
+                    sheet_length,
+                    margin,
+                    inter_gap,
+                    total_pcs_target,
+                    allow_flip
+                )
 
-        with col_ctrl:
-            st.markdown("##### 🔵 Komponen 1 (Baris 1 - Biru)")
-            c1_1, c1_2, c1_3 = st.columns(3)
-            with c1_1:
-                rot1 = st.slider("Rotasi Pcs 1 (°)", 0, 360, 90, step=5)
-            with c1_2:
-                shift_x1 = st.slider("Geser X Pcs 1", -float(bw * 2), float(bw * 2), 0.0, step=0.1)
-            with c1_3:
-                shift_y1 = st.slider("Geser Y Pcs 1", -float(bh * 2), float(bh * 2), 0.0, step=0.1)
-
-            st.markdown("##### 🔴 Komponen 2 (Baris 1 - Merah)")
-            c2_1, c2_2, c2_3 = st.columns(3)
-            with c2_1:
-                rot2 = st.slider("Rotasi Pcs 2 (°)", 0, 360, 270, step=5)
-            with c2_2:
-                shift_x2 = st.slider("Geser X Pcs 2", -float(bw * 2), float(bw * 2), 4.5, step=0.1)
-            with c2_3:
-                shift_y2 = st.slider("Geser Y Pcs 2", -float(bh * 2), float(bh * 2), -8.5, step=0.1)
-
-            st.markdown("##### 🟢 Komponen 3 (Awal Baris 2 - Hijau)")
-            c3_1, c3_2, c3_3 = st.columns(3)
-            with c3_1:
-                rot3 = st.slider("Rotasi Pcs 3 (°)", 0, 360, rot2, step=5)
-            with c3_2:
-                r2_shift_x = st.slider("Geser X Pcs 3", -float(bw * 2), float(bw * 2), 8.48, step=0.05)
-            with c3_3:
-                r2_shift_y = st.slider("Geser Y Pcs 3", -float(bh * 2), float(bh * 2), 4.89, step=0.05)
-
-        # GEOMETRI POLA REAL-TIME
-        p1_rot = rotate(base_poly, rot1, origin="center")
-        p1_poly = translate(p1_rot, xoff=shift_x1, yoff=shift_y1)
-
-        p2_rot = rotate(base_poly, rot2, origin="center")
-        p2_poly = translate(p2_rot, xoff=shift_x2, yoff=shift_y2)
-
-        p3_rot = rotate(base_poly, rot3, origin="center")
-        p3_poly = translate(p3_rot, xoff=r2_shift_x, yoff=r2_shift_y)
-
-        # PREVIEW CANVAS NORMALIZATION
-        min_canvas_x = min(p1_poly.bounds[0], p2_poly.bounds[0], p3_poly.bounds[0])
-        min_canvas_y = min(p1_poly.bounds[1], p2_poly.bounds[1], p3_poly.bounds[1])
-
-        pad = 5.0
-        p1_preview = translate(p1_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
-        p2_preview = translate(p2_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
-        p3_preview = translate(p3_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
-
-        collide_12 = polygons_collide(p1_preview, p2_preview, inter_gap)
-        collide_13 = polygons_collide(p1_preview, p3_preview, inter_gap)
-        collide_23 = polygons_collide(p2_preview, p3_preview, inter_gap)
-
-        with col_prev:
-            st.markdown("### 👁️ Preview Master (3 Komponen)")
-            if collide_12 or collide_13 or collide_23:
-                st.error("⚠️ Terdapat Komponen yang Bertabrakan! Adjust slider sampai posisi aman.")
+            if not placed_polygons:
+                st.error("Gagal menata pola. Pastikan ukuran lembaran cukup besar dibanding ukuran komponen.")
             else:
-                st.success("✅ 3 Komponen Bebas Tabrakan (Layout Safe)")
+                # SUMMARY METRICS
+                total_sheet_area = sheet_width * sheet_length
+                max_used_y = max([p.bounds[3] for p, _ in placed_polygons])
+                used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
 
-            pw = max(p1_preview.bounds[2], p2_preview.bounds[2], p3_preview.bounds[2]) + pad
-            ph = max(p1_preview.bounds[3], p2_preview.bounds[3], p3_preview.bounds[3]) + pad
+                component_yield = (total_pattern_area / used_sheet_area) * 100 if used_sheet_area > 0 else 0.0
+                overall_sheet_yield = (total_pattern_area / total_sheet_area) * 100
+                total_waste = 100.0 - component_yield
 
-            svg_3pcs = generate_svg_3pcs_preview(p1_preview, p2_preview, p3_preview, width_cm=max(pw, 25), height_cm=max(ph, 25))
-            st.components.v1.html(svg_3pcs, height=380, scrolling=False)
+                pairs_completed = len(placed_polygons) // 2
+                consumption_per_pair = (used_sheet_area / 10000) / max(pairs_completed, 1)
 
-        # STEP 2: ZIG-ZAG 2-ROW REPEAT LOGIC
-        st.markdown("---")
-        st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
+                st.markdown("### 📊 Summary Yield & Consuption Material")
+                m1, m2, m3, m4, m5 = st.columns(5)
+                m1.metric("Komponen Terpasang", f"{len(placed_polygons)} pcs ({pairs_completed} pairs)")
+                m2.metric("Total Net Area", f"{total_pattern_area:.1f} cm²")
+                m3.metric("Component Yield", f"{component_yield:.2f} %")
+                m4.metric("Overall Sheet Yield", f"{overall_sheet_yield:.2f} %")
+                m5.metric("Cutting Waste", f"{total_waste:.2f} %")
 
-        if st.button("📊 Render Full Sheet Layout", type="primary"):
+                st.success(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
-            # 1. Normalisasi Pasangan Master P1 (Biru) & P2 (Merah) ke Origin (0,0)
-            pair_min_x = min(p1_poly.bounds[0], p2_poly.bounds[0])
-            pair_min_y = min(p1_poly.bounds[1], p2_poly.bounds[1])
+                # RENDER SVG FULL SHEET
+                scale_f = 8
+                svg_w_f = sheet_width * scale_f
+                svg_h_f = sheet_length * scale_f
 
-            p1_m = translate(p1_poly, xoff=-pair_min_x, yoff=-pair_min_y)
-            p2_m = translate(p2_poly, xoff=-pair_min_x, yoff=-pair_min_y)
+                svg_full = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w_f} {svg_h_f}" xmlns="http://www.w3.org/2000/svg" style="background-color: #F8F9FA; border: 2px solid #333; border-radius: 8px;">'
 
-            # Lebar utuh 1 Blok Pasangan (Biru + Merah)
-            pair_w = max(p1_poly.bounds[2], p2_poly.bounds[2]) - pair_min_x
-            step_x = pair_w + inter_gap
+                m_x = margin * scale_f
+                m_y = margin * scale_f
+                m_w = (sheet_width - 2 * margin) * scale_f
+                m_h = (sheet_length - 2 * margin) * scale_f
+                svg_full += f'<rect x="{m_x}" y="{m_y}" width="{m_w}" height="{m_h}" fill="none" stroke="#ff4444" stroke-dasharray="4" stroke-width="1.5"/>'
 
-            # 2. Vektor Pergeseran Stagger dari P3 (Hijau) terhadap P1 (Biru)
-            stagger_x = p3_poly.bounds[0] - p1_poly.bounds[0]
-            pitch_y = abs(p3_poly.bounds[1] - p1_poly.bounds[1])
+                if max_used_y > 0:
+                    c_y = max_used_y * scale_f
+                    svg_full += f'<line x1="0" y1="{c_y}" x2="{svg_w_f}" y2="{c_y}" stroke="#3388ff" stroke-dasharray="3" stroke-width="2"/>'
 
-            placed_polygons = []
-            total_pattern_area = 0.0
+                colors = ['#3388ff', '#ff4444']
+                for poly, variant_idx in placed_polygons:
+                    pts = list(poly.exterior.coords)
+                    pts_str = " ".join([f"{p[0] * scale_f:.1f},{p[1] * scale_f:.1f}" for p in pts])
+                    fill_col = colors[variant_idx % 2]
+                    svg_full += f'<polygon points="{pts_str}" fill="{fill_col}" stroke="#111" stroke-width="0.8" opacity="0.85"/>'
 
-            total_items = target_pairs * 2
-            item_idx = 0
-            row_idx = 0
-
-            while item_idx < total_items:
-                is_row_even = (row_idx % 2 == 1)
-
-                # Y bertambah bertingkat rapat sesuai pitch_y
-                row_y = margin + (row_idx * pitch_y)
-
-                if row_y + min(p1_m.bounds[3], p2_m.bounds[3]) > (sheet_length - margin):
-                    break
-
-                # Geser X Zig-Zag: Baris Ganjil (0), Baris Genap (stagger_x)
-                x_shift = stagger_x if is_row_even else 0.0
-                row_start_x = margin + x_shift
-
-                # Mundur ke paling kiri jika ada sisa tempat di dalam margin
-                while row_start_x - step_x >= margin:
-                    row_start_x -= step_x
-
-                curr_x = row_start_x
-
-                while item_idx < total_items and curr_x <= (sheet_width - margin):
-                    cand_p1 = translate(p1_m, xoff=curr_x, yoff=row_y)
-                    cand_p2 = translate(p2_m, xoff=curr_x, yoff=row_y)
-
-                    p1_in = (cand_p1.bounds[0] >= margin and cand_p1.bounds[2] <= sheet_width - margin and 
-                             cand_p1.bounds[1] >= margin and cand_p1.bounds[3] <= sheet_length - margin)
-                    p2_in = (cand_p2.bounds[0] >= margin and cand_p2.bounds[2] <= sheet_width - margin and 
-                             cand_p2.bounds[1] >= margin and cand_p2.bounds[3] <= sheet_length - margin)
-
-                    if p1_in:
-                        placed_polygons.append((cand_p1, 0))
-                        total_pattern_area += cand_p1.area
-                        item_idx += 1
-
-                    if item_idx < total_items and p2_in:
-                        placed_polygons.append((cand_p2, 1))
-                        total_pattern_area += cand_p2.area
-                        item_idx += 1
-
-                    curr_x += step_x
-
-                row_idx += 1
-
-            # SUMMARY & METRICS
-            total_sheet_area = sheet_width * sheet_length
-            max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
-            used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
-
-            component_yield = (total_pattern_area / used_sheet_area) * 100 if used_sheet_area > 0 else 0.0
-            overall_sheet_yield = (total_pattern_area / total_sheet_area) * 100
-            total_waste = 100.0 - component_yield
-
-            pairs_completed = len(placed_polygons) // 2
-            consumption_per_pair = (used_sheet_area / 10000) / max(pairs_completed, 1)
-
-            st.markdown("### 📊 Yield & Material Consumption Summary")
-            m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("Komponen Terpasang", f"{len(placed_polygons)} pcs ({pairs_completed} pairs)")
-            m2.metric("Total Net Area", f"{total_pattern_area:.1f} cm²")
-            m3.metric("Component Yield", f"{component_yield:.2f} %")
-            m4.metric("Overall Sheet Yield", f"{overall_sheet_yield:.2f} %")
-            m5.metric("Cutting Waste", f"{total_waste:.2f} %")
-
-            st.info(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
-
-            # RENDER SVG FULL SHEET
-            scale_f = 8
-            svg_w_f = sheet_width * scale_f
-            svg_h_f = sheet_length * scale_f
-
-            svg_full = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w_f} {svg_h_f}" xmlns="http://www.w3.org/2000/svg" style="background-color: #F8F9FA; border: 2px solid #333; border-radius: 8px;">'
-
-            m_x = margin * scale_f
-            m_y = margin * scale_f
-            m_w = (sheet_width - 2 * margin) * scale_f
-            m_h = (sheet_length - 2 * margin) * scale_f
-            svg_full += f'<rect x="{m_x}" y="{m_y}" width="{m_w}" height="{m_h}" fill="none" stroke="#ff4444" stroke-dasharray="4" stroke-width="1.5"/>'
-
-            if max_used_y > 0:
-                c_y = max_used_y * scale_f
-                svg_full += f'<line x1="0" y1="{c_y}" x2="{svg_w_f}" y2="{c_y}" stroke="#3388ff" stroke-dasharray="3" stroke-width="2"/>'
-
-            colors = ['#3388ff', '#ff4444']
-            for poly, idx in placed_polygons:
-                pts = list(poly.exterior.coords)
-                pts_str = " ".join([f"{p[0] * scale_f:.1f},{p[1] * scale_f:.1f}" for p in pts])
-                fill_col = colors[idx % 2]
-                svg_full += f'<polygon points="{pts_str}" fill="{fill_col}" stroke="#111" stroke-width="0.8" opacity="0.85"/>'
-
-            svg_full += '</svg>'
-            st.components.v1.html(svg_full, height=650, scrolling=True)
+                svg_full += '</svg>'
+                st.components.v1.html(svg_full, height=650, scrolling=True)
