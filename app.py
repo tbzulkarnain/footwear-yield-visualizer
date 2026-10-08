@@ -207,7 +207,7 @@ if uploaded_file is not None:
 
         with col_prev:
             st.markdown("##### 👁️ Live Preview Grid (2 Baris)")
-            st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.1f} cm | Pitch Y: {pitch_y:.1f} cm")
+            st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.2f} cm | Pitch Y: {pitch_y:.2f} cm")
             svg_preview = generate_svg_preview_grid(preview_items, width_cm=60, height_cm=40)
             st.components.v1.html(svg_preview, height=320, scrolling=False)
 
@@ -311,19 +311,19 @@ if uploaded_file is not None:
                     row_idx += 1
 
             # ============================================================
-            # PERHITUNGAN STANDAR PROCOST (PER PAIR)
+            # PERHITUNGAN STANDAR PROCOST (PER PAIR) DENGAN PRESISI TINGGI
             # ============================================================
             pieces_completed = len(placed_polygons)
             pairs_completed = max(pieces_completed // 2, 1)
 
-            # Net Area per Pair (cm²) -> Luas 1 pcs * 2 (karena 1 pasang = 1 kiri & 1 kanan)
+            # Net Area per Pair (cm²) -> Luas 1 pcs * 2 (kiri & kanan)
             single_net_area = base_poly.area
             net_area_per_pair = single_net_area * 2.0
 
-            # Panjang bahan terpakai aktual (cm)
+            # Panjang bahan terpakai aktual (cm) - Mengambil batas koordinat Y terjauh secara presisi
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else sheet_length
             
-            # Gross Area per Pair (cm²) -> (Lebar Sheet * Panjang Terpakai) / Total Pasang
+            # Gross Area per Pair (cm²) -> (Lebar Sheet * Panjang Terpakai Presisi) / Total Pasang
             used_sheet_area = sheet_width * max_used_y
             gross_area_per_pair = used_sheet_area / pairs_completed
 
@@ -334,7 +334,6 @@ if uploaded_file is not None:
             efficiency = (net_area_per_pair / gross_area_per_pair) * 100 if gross_area_per_pair > 0 else 0.0
 
             # Yield (per unit length) -> Pairs per cm (atau satuan unit panjang standar ProCost)
-            # ProCost biasanya menghitung yield per unit panjang (misal pasang per satuan panjang marker)
             procost_yield = pairs_completed / max_used_y if max_used_y > 0 else 0.0
 
             # TAMPILAN TABEL/METRIK ALA PROCOST
@@ -348,7 +347,8 @@ if uploaded_file is not None:
             col_m5.metric("Efficiency (%)", f"{efficiency:.2f} %")
             col_m6.metric("Yield (per unit)", f"{procost_yield:.4f}")
 
-            st.info(f"💡 **Info Produksi:** Terpasang {pairs_completed} pasang ({pieces_completed} pcs) | Panjang Terpakai: **{max_used_y:.1f} cm** dari {sheet_length:.1f} cm")
+            # Menggunakan format desimal presisi (2 angka di belakang koma) untuk panjang terpakai
+            st.info(f"💡 **Info Produksi:** Terpasang {pairs_completed} pasang ({pieces_completed} pcs) | Panjang Terpakai: **{max_used_y:.2f} cm** dari {sheet_length:.1f} cm")
 
             # RENDER SVG FULL SHEET
             scale_f = 6.0
