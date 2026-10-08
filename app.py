@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (Precision Contour Grid)")
-st.caption("Penataan Jarak Kontur Rapat Tanpa Tabrakan")
+st.title("⚡ Footwear Material Yield Visualizer (Interactive Bounding Box & Offset)")
+st.caption("Penataan Berbasis Kotak dengan Kontrol Manual Offset Interaktif")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -21,8 +21,8 @@ sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value
 sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
 margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, step=0.5)
 
-# Input gap antar kontur dalam milimeter (mm)
-inter_gap_mm = st.sidebar.number_input("Gap Antar Kontur / Pisau (mm)", value=2.0, min_value=0.0, max_value=20.0, step=0.5)
+# Input gap antar komponen dalam milimeter (mm) standar pisau/laser
+inter_gap_mm = st.sidebar.number_input("Gap Antar Komponen / Pisau (mm)", value=2.0, min_value=0.0, max_value=20.0, step=0.5)
 inter_gap_cm = inter_gap_mm / 10.0  # Konversi ke cm
 
 target_pairs = st.sidebar.number_input("Jumlah Pasang Target (Pairs)", value=50, min_value=1, step=1)
@@ -145,14 +145,17 @@ if uploaded_file is not None:
             else:
                 pair_offset_x = 0.0
 
-        # HITUNG GEOMETRI P1 & P2 DAN NORMALISASI KE (0,0)
-        p1_rot = rotate(base_poly, rot_p1, origin='center')
-        minx1, miny1, _, _ = p1_rot.bounds
-        p1 = translate(p1_rot, xoff=-minx1, yoff=-miny1)
+            # KONTROL TAMBAHAN: SLIDER MANUAL ADJUSTMENT (OPSI 1)
+            st.markdown("##### 🎛️ Penyesuaian Spasi Grid Manual (Bebas Bentuk)")
+            fine_tune_x = st.slider("Fine-tune Jarak Kolom (Step X Adjustment)", -float(bw), float(bw), 0.0, step=0.1, help="Geser minus (-) jika ingin komponen saling menyelip rapat")
+            fine_tune_y = st.slider("Fine-tune Jarak Baris (Pitch Y Adjustment)", -float(bh), float(bh), 0.0, step=0.1, help="Geser minus (-) jika ingin baris saling mendekat / overlap")
 
-        p2_rot = rotate(base_poly, rot_p2, origin='center')
-        minx2, miny2, _, _ = p2_rot.bounds
-        p2 = translate(p2_rot, xoff=-minx2, yoff=-miny2)
+        # HITUNG GEOMETRI P1 & P2
+        p1 = rotate(base_poly, rot_p1, origin='center')
+        p1 = translate(p1, xoff=-p1.bounds[0], yoff=-p1.bounds[1])
+
+        p2 = rotate(base_poly, rot_p2, origin='center')
+        p2 = translate(p2, xoff=-p2.bounds[0], yoff=-p2.bounds[1])
         if is_pair_cat:
             p2 = translate(p2, xoff=pair_offset_x, yoff=0.0)
 
@@ -164,16 +167,16 @@ if uploaded_file is not None:
             st.markdown("##### 👁️ Preview Master Layout")
             if is_pair_cat:
                 if p1.buffer(inter_gap_cm/2).intersects(p2.buffer(inter_gap_cm/2)):
-                    st.error("⚠️ Kontur pasangan bertabrakan! Geser slider 'Jarak X Pcs 2' ke kanan.")
+                    st.error("⚠️ Pasangan bertabrakan! Geser slider 'Jarak X Pcs 2' ke kanan.")
                 else:
-                    st.success("✅ Jarak Antar Kontur Aman")
+                    st.success("✅ Jarak Pasangan Aman")
             else:
                 st.info(f"💡 Layout Mode: **{category.split(':')[0]}**")
 
             svg_preview = generate_svg_preview_pair(p1, p2, width_cm=max(prev_w, 25), height_cm=max(prev_h, 20), show_p2=(is_pair_cat or is_twoway_cat))
             st.components.v1.html(svg_preview, height=280, scrolling=False)
 
-        # STEP 2: DUPLIKASI BERDASARKAN KONTUR PRESISI
+        # STEP 2: DUPLIKASI BERBASIS BOUNDING BOX DENGAN FINE-TUNE OFFSET
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -187,12 +190,10 @@ if uploaded_file is not None:
 
             p1_w = p1.bounds[2] - p1.bounds[0]
             p1_h = p1.bounds[3] - p1.bounds[1]
-            p2_w = p2.bounds[2] - p2.bounds[0]
-            p2_h = p2.bounds[3] - p2.bounds[1]
 
             if "Category 1" in category:
-                step_x = p1_w + inter_gap_cm
-                pitch_y = p1_h + inter_gap_cm
+                step_x = p1_w + inter_gap_cm + fine_tune_x
+                pitch_y = p1_h + inter_gap_cm + fine_tune_y
                 
                 while item_idx < total_items:
                     row_y = margin + (row_idx * pitch_y)
@@ -210,14 +211,14 @@ if uploaded_file is not None:
                     row_idx += 1
 
             elif "Category 2" in category:
-                # Two Way Interlock: Selang-seling P1 dan P2 dengan lebar masing-masing
-                avg_w = (p1_w + p2_w) / 2
-                step_x = avg_w + inter_gap_cm
-                pitch_y = max(p1_h, p2_h) + inter_gap_cm
+                w_unit = max(p1.bounds[2], p2.bounds[2])
+                h_unit = max(p1.bounds[3], p2.bounds[3])
+                step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
+                pitch_y = h_unit + inter_gap_cm + fine_tune_y
 
                 while item_idx < total_items:
                     row_y = margin + (row_idx * pitch_y)
-                    if row_y + max(p1_h, p2_h) > (sheet_length - margin):
+                    if row_y + h_unit > (sheet_length - margin):
                         break
                     
                     curr_x = margin
@@ -227,7 +228,7 @@ if uploaded_file is not None:
                         color_idx = 0 if col_idx % 2 == 0 else 1
                         cand = translate(p_curr, xoff=curr_x, yoff=row_y)
                         
-                        if curr_x >= margin and (curr_x + (p1_w if col_idx % 2 == 0 else p2_w)) <= (sheet_width - margin):
+                        if curr_x >= margin and (curr_x + (p1.bounds[2]-p1.bounds[0] if col_idx % 2 == 0 else p2.bounds[2]-p2.bounds[0])) <= (sheet_width - margin):
                             placed_polygons.append((cand, color_idx))
                             total_pattern_area += cand.area
                             item_idx += 1
@@ -237,8 +238,8 @@ if uploaded_file is not None:
                     row_idx += 1
 
             elif "Category 3" in category:
-                step_x = p1_w + inter_gap_cm
-                pitch_y = p1_h + inter_gap_cm
+                step_x = p1_w + inter_gap_cm + fine_tune_x
+                pitch_y = p1_h + inter_gap_cm + fine_tune_y
                 stagger_x = step_x / 2
 
                 while item_idx < total_items:
@@ -263,15 +264,16 @@ if uploaded_file is not None:
                     row_idx += 1
 
             elif "Category 4" in category:
-                avg_w = (p1_w + p2_w) / 2
-                step_x = avg_w + inter_gap_cm
-                pitch_y = max(p1_h, p2_h) + inter_gap_cm
+                w_unit = max(p1.bounds[2], p2.bounds[2])
+                h_unit = max(p1.bounds[3], p2.bounds[3])
+                step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
+                pitch_y = h_unit + inter_gap_cm + fine_tune_y
                 stagger_x = step_x / 2
 
                 while item_idx < total_items:
                     is_row_even = (row_idx % 2 == 1)
                     row_y = margin + (row_idx * pitch_y)
-                    if row_y + max(p1_h, p2_h) > (sheet_length - margin):
+                    if row_y + h_unit > (sheet_length - margin):
                         break
                     
                     row_start_x = margin + (stagger_x if is_row_even else 0.0)
@@ -285,7 +287,7 @@ if uploaded_file is not None:
                         color_idx = 0 if col_idx % 2 == 0 else 1
                         cand = translate(p_curr, xoff=curr_x, yoff=row_y)
                         
-                        if curr_x >= margin and (curr_x + (p1_w if col_idx % 2 == 0 else p2_w)) <= (sheet_width - margin):
+                        if curr_x >= margin and (curr_x + (p1.bounds[2]-p1.bounds[0] if col_idx % 2 == 0 else p2.bounds[2]-p2.bounds[0])) <= (sheet_width - margin):
                             placed_polygons.append((cand, color_idx))
                             total_pattern_area += cand.area
                             item_idx += 1
@@ -296,11 +298,11 @@ if uploaded_file is not None:
 
             else:
                 # Category 5 & 6: Pair Unit
-                pair_width = max(p1.bounds[2], p2.bounds[2]) - min(p1.bounds[0], p2.bounds[0])
-                pair_height = max(p1.bounds[3], p2.bounds[3]) - min(p1.bounds[1], p2.bounds[1])
+                pair_width = max(p1.bounds[2], p2.bounds[2])
+                pair_height = max(p1.bounds[3], p2.bounds[3])
 
-                step_x = pair_width + inter_gap_cm
-                pitch_y = pair_height + inter_gap_cm
+                step_x = pair_width + inter_gap_cm + fine_tune_x
+                pitch_y = pair_height + inter_gap_cm + fine_tune_y
                 stagger_x = (step_x / 2) if "Category 6" in category else 0.0
 
                 while item_idx < total_items:
