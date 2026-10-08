@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (ProCost Precision Grid)")
-st.caption("Penataan Presisi ProCost Berbasis Margin & Allowance Milimeter (mm)")
+st.title("⚡ Footwear Material Yield Visualizer (ProCost Grid Standard)")
+st.caption("Penataan ProCost Otomatis dengan Tambahan Allowance Jarak Potong (mm)")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -137,26 +137,24 @@ if uploaded_file is not None:
             else:
                 rot_p2 = rot_p1
 
-            # INPUT ANGKA MILIMETER (mm) SEPERTI PROCOST
             st.markdown("##### 📏 Parameter Jarak Potong (ProCost Allowance)")
             c_gap1, c_gap2 = st.columns(2)
             with c_gap1:
-                inter_gap_mm = st.number_input("Jarak Antar-Pola / Gap (mm)", min_value=0.0, max_value=20.0, value=2.0, step=0.5)
+                inter_gap_mm = st.number_input("Allowance Antar-Pola / Gap (mm)", min_value=0.0, max_value=20.0, value=2.0, step=0.5)
             with c_gap2:
-                pair_gap_mm = st.number_input("Jarak Dalam Pasangan (mm)", min_value=0.0, max_value=50.0, value=3.0, step=0.5)
+                pair_gap_mm = st.number_input("Tumpang Tindih Pasangan X (mm)", min_value=-50.0, max_value=50.0, value=5.0, step=0.5)
 
-            st.markdown("##### 📐 Fine-Tuning Jarak Antar-Pasangan & Baris (mm)")
             c_dist1, c_dist2 = st.columns(2)
             with c_dist1:
-                step_x_adj_mm = st.number_input("Geser Pasangan Horiz. X (mm)", value=float(round(bw * 10 * 0.45, 1)), step=1.0)
+                step_x_allowance_mm = st.number_input("Allowance Antar-Pasangan Horiz. X (mm)", min_value=-50.0, max_value=50.0, value=2.0, step=0.5)
             with c_dist2:
-                pitch_y_adj_mm = st.number_input("Rapat Antar-Baris Vert. Y (mm)", value=float(round(bh * 10 * 0.75, 1)), step=1.0)
+                pitch_y_allowance_mm = st.number_input("Allowance Antar-Baris Vert. Y (mm)", min_value=-50.0, max_value=50.0, value=2.0, step=0.5)
 
-        # KONVERSI MILIMETER KE CENTIMETER UNTUK SHAPELY
+        # KONVERSI MM KE CM
         inter_gap_cm = inter_gap_mm / 10.0
         pair_gap_cm = pair_gap_mm / 10.0
-        step_x_adj_cm = step_x_adj_mm / 10.0
-        pitch_y_adj_cm = pitch_y_adj_mm / 10.0
+        step_x_allowance_cm = step_x_allowance_mm / 10.0
+        pitch_y_allowance_cm = pitch_y_allowance_mm / 10.0
 
         # GEOMETRI P1 & P2
         p1 = rotate(base_poly, rot_p1, origin='center')
@@ -164,7 +162,10 @@ if uploaded_file is not None:
 
         p2 = rotate(base_poly, rot_p2, origin='center')
         p2 = translate(p2, xoff=-p2.bounds[0], yoff=-p2.bounds[1])
-        p2 = translate(p2, xoff=p1.bounds[2] + pair_gap_cm, yoff=0.0)
+        
+        # Posisi P2 relatif terhadap P1
+        p2_x_pos = (p1.bounds[2] / 2) + pair_gap_cm
+        p2 = translate(p2, xoff=p2_x_pos, yoff=0.0)
 
         # PREVIEW MASTER PASANGAN
         prev_w = max(p1.bounds[2], p2.bounds[2]) + 5.0
@@ -174,7 +175,7 @@ if uploaded_file is not None:
             st.markdown("##### 👁️ Preview Master Layout")
             if is_pair_cat or is_twoway_cat:
                 if p1.buffer(inter_gap_cm/2).intersects(p2.buffer(inter_gap_cm/2)):
-                    st.error("⚠️ Pasangan bertabrakan! Tambahkan Jarak Dalam Pasangan (mm).")
+                    st.error("⚠️ Pasangan bertabrakan! Tambahkan nilai 'Tumpang Tindih Pasangan X (mm)'.")
                 else:
                     st.success("✅ Jarak Pasangan Aman (Bebas Tabrakan)")
 
@@ -193,18 +194,20 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # HITUNG PITCH BERDASARKAN INPUTAN MM
-            pitch_y = pitch_y_adj_cm + inter_gap_cm
-            step_x = step_x_adj_cm + inter_gap_cm
-            stagger_x = (step_x / 2) if ("Staggered" in category or "Category 3" in category or "Category 4" in category or "Category 6" in category) else 0.0
+            # CALCULATE REAL BOUNDING BOX OF UNIT PAIR
+            pair_width = max(p1.bounds[2], p2.bounds[2]) - min(p1.bounds[0], p2.bounds[0])
+            pair_height = max(p1.bounds[3], p2.bounds[3]) - min(p1.bounds[1], p2.bounds[1])
 
-            base_h = max(p1.bounds[3], p2.bounds[3])
+            # RUMUS MATRIKS PROCOST PRESISI
+            step_x = pair_width + inter_gap_cm + step_x_allowance_cm
+            pitch_y = pair_height + inter_gap_cm + pitch_y_allowance_cm
+            stagger_x = (step_x / 2) if ("Staggered" in category or "Category 3" in category or "Category 4" in category or "Category 6" in category) else 0.0
 
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
                 row_y = margin_cm + (row_idx * pitch_y)
 
-                if row_y + base_h > (sheet_length - margin_cm):
+                if row_y + pair_height > (sheet_length - margin_cm):
                     break
 
                 x_shift = stagger_x if is_row_even else 0.0
