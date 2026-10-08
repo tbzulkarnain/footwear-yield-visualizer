@@ -4,14 +4,19 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.affinity import translate, rotate
 
+# ============================================================
+# PAGE CONFIG
+# ============================================================
+
 st.set_page_config(
     page_title="Footwear Material Yield Visualizer",
     page_icon="📐",
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (Exact Grid Repeat)")
-st.caption("Master Setup Step 1 -> Duplikasi Matriks Utuh Tanpa Distorsi")
+st.title("⚡ Footwear Material Yield Visualizer (Interlock Continuous Grid)")
+st.caption("Step 1: Set Pasangan Master -> Step 2: Duplikasi Interlock Berkesinambungan")
+
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -24,6 +29,7 @@ sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", v
 margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, step=0.5)
 inter_gap = st.sidebar.number_input("Jarak Antar Pola / Interlacing Gap (cm)", value=0.1, step=0.05)
 target_pairs = st.sidebar.number_input("Jumlah Pasang Target (Pairs)", value=50, min_value=1, step=1)
+
 
 # ============================================================
 # EXTRACT POLYGONS
@@ -71,6 +77,7 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
     except Exception:
         return []
 
+
 def generate_svg_3pcs_preview(p1, p2, p3, width_cm=50, height_cm=40):
     scale = 10
     svg_w = width_cm * scale
@@ -87,13 +94,15 @@ def generate_svg_3pcs_preview(p1, p2, p3, width_cm=50, height_cm=40):
     svg_code += "</svg>"
     return svg_code
 
+
 def polygons_collide(poly_a, poly_b, gap=0.1):
     safe_a = poly_a.buffer(gap / 2)
     safe_b = poly_b.buffer(gap / 2)
     return safe_a.intersects(safe_b)
 
+
 # ============================================================
-# MAIN APP
+# MAIN APP LOGIC
 # ============================================================
 
 uploaded_file = st.file_uploader("Upload Gambar Pattern Component Master", type=["png", "jpg", "jpeg"])
@@ -116,7 +125,7 @@ if uploaded_file is not None:
         col_ctrl, col_prev = st.columns([1.1, 0.9])
 
         with col_ctrl:
-            st.markdown("##### 🔵 Komponen 1 (Baris 1 - Pcs 1)")
+            st.markdown("##### 🔵 Komponen 1 (Baris 1 - Biru)")
             c1_1, c1_2, c1_3 = st.columns(3)
             with c1_1:
                 rot1 = st.slider("Rotasi Pcs 1 (°)", 0, 360, 90, step=5)
@@ -125,7 +134,7 @@ if uploaded_file is not None:
             with c1_3:
                 shift_y1 = st.slider("Geser Y Pcs 1", -float(bh * 2), float(bh * 2), 0.0, step=0.1)
 
-            st.markdown("##### 🔴 Komponen 2 (Baris 1 - Pcs 2)")
+            st.markdown("##### 🔴 Komponen 2 (Baris 1 - Merah)")
             c2_1, c2_2, c2_3 = st.columns(3)
             with c2_1:
                 rot2 = st.slider("Rotasi Pcs 2 (°)", 0, 360, 270, step=5)
@@ -134,16 +143,16 @@ if uploaded_file is not None:
             with c2_3:
                 shift_y2 = st.slider("Geser Y Pcs 2", -float(bh * 2), float(bh * 2), -8.5, step=0.1)
 
-            st.markdown("##### 🟢 Komponen 3 (Awal Baris 2)")
+            st.markdown("##### 🟢 Komponen 3 (Awal Baris 2 - Merah Lanjutan)")
             c3_1, c3_2, c3_3 = st.columns(3)
             with c3_1:
-                rot3 = st.slider("Rotasi Pcs 3 (°)", 0, 360, rot1, step=5)
+                rot3 = st.slider("Rotasi Pcs 3 (°)", 0, 360, rot2, step=5)
             with c3_2:
-                r2_shift_x = st.slider("Geser X Pcs 3", -float(bw * 2), float(bw * 2), 8.1, step=0.1)
+                r2_shift_x = st.slider("Geser X Pcs 3", -float(bw * 2), float(bw * 2), 8.48, step=0.05)
             with c3_3:
-                r2_shift_y = st.slider("Geser Y Pcs 3", -float(bh * 2), float(bh * 2), 6.1, step=0.1)
+                r2_shift_y = st.slider("Geser Y Pcs 3", -float(bh * 2), float(bh * 2), 4.89, step=0.05)
 
-        # GEOMETRI REAL-TIME DARI SLIDER
+        # GEOMETRI POLA DARI SLIDER
         p1_rot = rotate(base_poly, rot1, origin="center")
         p1_poly = translate(p1_rot, xoff=shift_x1, yoff=shift_y1)
 
@@ -153,7 +162,7 @@ if uploaded_file is not None:
         p3_rot = rotate(base_poly, rot3, origin="center")
         p3_poly = translate(p3_rot, xoff=r2_shift_x, yoff=r2_shift_y)
 
-        # PREVIEW PRESERVATION
+        # PREVIEW CANVAS NORMALIZATION
         min_canvas_x = min(p1_poly.bounds[0], p2_poly.bounds[0], p3_poly.bounds[0])
         min_canvas_y = min(p1_poly.bounds[1], p2_poly.bounds[1], p3_poly.bounds[1])
 
@@ -179,26 +188,30 @@ if uploaded_file is not None:
             svg_3pcs = generate_svg_3pcs_preview(p1_preview, p2_preview, p3_preview, width_cm=max(pw, 25), height_cm=max(ph, 25))
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
-        # STEP 2: DUPLIKASI MURNI MATRIKS
+        # STEP 2: FULL SHEET DUPLICATION LOGIC
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
-        if st.button("📊 Repeat Master Setup To Sheet", type="primary"):
+        if st.button("📊 Render Full Sheet Layout", type="primary"):
 
-            # ZEROING BASE PAIR (P1 & P2)
-            pair_min_x = min(p1_poly.bounds[0], p2_poly.bounds[0])
-            pair_min_y = min(p1_poly.bounds[1], p2_poly.bounds[1])
+            # P1 = Biru, P2 = Merah (Baris 1), P3 = Merah Awal Baris 2
+            # Normalisasi ke titik Origin (0,0)
+            base_x0 = p1_poly.bounds[0]
+            base_y0 = p1_poly.bounds[1]
 
-            p1_m = translate(p1_poly, xoff=-pair_min_x, yoff=-pair_min_y)
-            p2_m = translate(p2_poly, xoff=-pair_min_x, yoff=-pair_min_y)
+            blue_master = translate(p1_poly, xoff=-base_x0, yoff=-base_y0)
+            red_master1 = translate(p2_poly, xoff=-base_x0, yoff=-base_y0)
+            red_master2 = translate(p3_poly, xoff=-base_x0, yoff=-base_y0)
 
-            # LEBAR EFFECTIVE PAIR HORIZONTAL
-            pair_w = max(p1_m.bounds[2], p2_m.bounds[2]) - min(p1_m.bounds[0], p2_m.bounds[0])
-            step_x = pair_w + inter_gap
+            # Jarak Horizontal antar komponen sejenis
+            step_x = (red_master2.bounds[0] - blue_master.bounds[0])
+            if step_x <= 0:
+                step_x = (blue_master.bounds[2] - blue_master.bounds[0]) + inter_gap
 
-            # VEKTOR OFFSET MURNI DARI P3 KHUSUS DARI SLIDER
-            stagger_x = p3_poly.bounds[0] - p1_poly.bounds[0]
-            pitch_y = p3_poly.bounds[1] - p1_poly.bounds[1]
+            # Pitch Vertikal (jarak Y antar baris)
+            pitch_y = (red_master2.bounds[1] - red_master1.bounds[1])
+            if pitch_y <= 0:
+                pitch_y = (blue_master.bounds[3] - blue_master.bounds[0]) + inter_gap
 
             placed_polygons = []
             total_pattern_area = 0.0
@@ -208,37 +221,41 @@ if uploaded_file is not None:
             row_idx = 0
 
             while item_idx < total_items:
-                is_row_even = (row_idx % 2 == 1)
-
-                # POSISI Y MURNI DARI PITCH P3 DITAMBAHKAN TANPA PENETRASI/PENOLAKAN
+                # Geser Y untuk baris saat ini
                 row_y = margin + (row_idx * pitch_y)
-                x_shift = stagger_x if is_row_even else 0.0
 
-                if row_y + min(p1_m.bounds[3], p2_m.bounds[3]) > (sheet_length - margin):
+                # Jika batas Y melampaui lembaran, hentikan
+                if row_y + blue_master.bounds[1] > (sheet_length - margin):
                     break
 
-                curr_x = margin + x_shift
+                # Geser X selang-seling (stagger) berdasarkan baris
+                row_start_x = margin - (row_idx * (red_master1.bounds[0] - blue_master.bounds[0]))
 
-                while curr_x < margin:
-                    curr_x += step_x
+                # Tarik ke paling kiri batas margin untuk mengisi komponen yang muat di sebelah kiri
+                while row_start_x > margin:
+                    row_start_x -= step_x
+                while row_start_x + step_x < margin:
+                    row_start_x += step_x
 
-                while item_idx < total_items and (curr_x + pair_w) <= (sheet_width - margin):
-                    cand_p1 = translate(p1_m, xoff=curr_x, yoff=row_y)
-                    cand_p2 = translate(p2_m, xoff=curr_x, yoff=row_y)
+                curr_x = row_start_x
 
-                    # HANYA BANYAKNYA UKURAN SHEET YANG DISETIAI
-                    p1_in = (cand_p1.bounds[2] <= sheet_width - margin) and (cand_p1.bounds[3] <= sheet_length - margin) and (cand_p1.bounds[0] >= margin)
-                    p2_in = (cand_p2.bounds[2] <= sheet_width - margin) and (cand_p2.bounds[3] <= sheet_length - margin) and (cand_p2.bounds[0] >= margin)
-
-                    if p1_in:
-                        placed_polygons.append((cand_p1, 0))
-                        total_pattern_area += cand_p1.area
+                while item_idx < total_items and curr_x <= (sheet_width - margin):
+                    # 1. Pasang Komponen Biru
+                    p_blue = translate(blue_master, xoff=curr_x, yoff=row_y)
+                    if (p_blue.bounds[0] >= margin and p_blue.bounds[2] <= sheet_width - margin and 
+                        p_blue.bounds[1] >= margin and p_blue.bounds[3] <= sheet_length - margin):
+                        placed_polygons.append((p_blue, 0))
+                        total_pattern_area += p_blue.area
                         item_idx += 1
 
-                    if item_idx < total_items and p2_in:
-                        placed_polygons.append((cand_p2, 1))
-                        total_pattern_area += cand_p2.area
-                        item_idx += 1
+                    # 2. Pasang Komponen Merah
+                    if item_idx < total_items:
+                        p_red = translate(red_master1, xoff=curr_x, yoff=row_y)
+                        if (p_red.bounds[0] >= margin and p_red.bounds[2] <= sheet_width - margin and 
+                            p_red.bounds[1] >= margin and p_red.bounds[3] <= sheet_length - margin):
+                            placed_polygons.append((p_red, 1))
+                            total_pattern_area += p_red.area
+                            item_idx += 1
 
                     curr_x += step_x
 
