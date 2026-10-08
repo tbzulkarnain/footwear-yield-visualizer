@@ -147,20 +147,16 @@ if uploaded_file is not None:
         poly2_zero = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
         poly3_zero = translate(poly3_custom, xoff=-p_minx, yoff=-p_miny)
 
-        # Lebar Efektif Pasangan (Unit Width)
         unit_w = max(poly1_zero.bounds[2], poly2_zero.bounds[2]) - min(poly1_zero.bounds[0], poly2_zero.bounds[0])
 
-        # Vektor Pergeseran Baris 2 relatif terhadap Komponen 1
         row2_offset_x = poly3_zero.bounds[0] - poly1_zero.bounds[0]
         row2_offset_y = poly3_zero.bounds[1] - poly1_zero.bounds[1]
 
-        # Padding Tampilan Preview
         pad = 5.0
         p1_unit = translate(poly1_zero, xoff=pad, yoff=pad)
         p2_unit = translate(poly2_zero, xoff=pad, yoff=pad)
         p3_unit = translate(poly3_zero, xoff=pad, yoff=pad)
 
-        # DETEKSI TABRAKAN REALTIME PREVIEW
         u1_b = p1_unit.buffer(inter_gap / 2)
         u2_b = p2_unit.buffer(inter_gap / 2)
         u3_b = p3_unit.buffer(inter_gap / 2)
@@ -182,7 +178,7 @@ if uploaded_file is not None:
             svg_3pcs = generate_svg_3pcs_preview(p1_unit, p2_unit, p3_unit, width_cm=max(pw, 25), height_cm=max(ph, 25))
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
-        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH (LOGIKA ZIG-ZAG) ---
+        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH (MATRIKS REPEAT PRESISI) ---
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -199,10 +195,10 @@ if uploaded_file is not None:
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
                 
-                # Jarak vertikal lurus bertingkat
+                # Setiap baris diturunkan sejauh row2_offset_y
                 row_y = margin + (row_idx * row2_offset_y)
                 
-                # Pergeseran horizontal Zig-Zag (hanya berlaku pada baris genap)
+                # Baris genap digeser sejauh row2_offset_x
                 x_shift = row2_offset_x if is_row_even else 0.0
 
                 if row_y + min(poly1_zero.bounds[3], poly2_zero.bounds[3]) > (sheet_length - margin):
@@ -210,12 +206,11 @@ if uploaded_file is not None:
 
                 curr_x = margin + x_shift
 
-                # Kembalikan x ke batas margin lembaran
+                # Sesuaikan batas X agar tidak keluar margin kiri
                 while curr_x < margin:
                     curr_x += step_x
 
                 while item_idx < total_items and (curr_x + unit_w) <= (sheet_width - margin):
-                    # Pasangan Unit (Biru + Merah)
                     p1 = translate(poly1_zero, xoff=curr_x, yoff=row_y)
                     p2 = translate(poly2_zero, xoff=curr_x, yoff=row_y)
 
