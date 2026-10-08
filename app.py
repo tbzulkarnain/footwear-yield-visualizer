@@ -6,8 +6,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("⚡ Footwear Material Yield Visualizer (Fixed Pair Replication)")
-st.caption("Atur 3 Komponen Master -> Duplikasi Pasangan Utuh Presisi Bebas Tabrakan")
+st.title("⚡ Footwear Material Yield Visualizer (Strict Axis Match)")
+st.caption("Posisi Canvas Murni & Presisi Mengikuti Angka Slider Without Distortion")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -62,7 +62,7 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
         return []
 
 # --- RENDERER SVG PREVIEW 3 KOMPONEN ---
-def generate_svg_3pcs_preview(p1, p2, p3, width_cm=40, height_cm=35):
+def generate_svg_3pcs_preview(p1, p2, p3, width_cm=50, height_cm=40):
     scale = 10
     svg_w = width_cm * scale
     svg_h = height_cm * scale
@@ -104,67 +104,54 @@ if uploaded_file is not None:
             with c1_1:
                 rot1 = st.slider("Rotasi Pcs 1 (°)", 0, 360, 0, step=5)
             with c1_2:
-                shift_x1 = st.slider("Geser X Pcs 1", -float(bw), float(bw * 1.5), 0.0, step=0.1)
+                shift_x1 = st.slider("Geser X Pcs 1", -float(bw*2), float(bw * 2), 0.0, step=0.1)
             with c1_3:
-                shift_y1 = st.slider("Geser Y Pcs 1", -float(bh), float(bh * 1.5), 0.0, step=0.1)
+                shift_y1 = st.slider("Geser Y Pcs 1", -float(bh*2), float(bh * 2), 0.0, step=0.1)
 
             st.markdown("##### 🔴 Komponen 2 (Baris 1 - Pcs 2)")
             c2_1, c2_2, c2_3 = st.columns(3)
             with c2_1:
                 rot2 = st.slider("Rotasi Pcs 2 (°)", 0, 360, 180, step=5)
             with c2_2:
-                shift_x2 = st.slider("Geser X Pcs 2", -float(bw), float(bw * 1.5), float(bw * 0.4), step=0.1)
+                shift_x2 = st.slider("Geser X Pcs 2", -float(bw*2), float(bw * 2), float(bw * 0.5), step=0.1)
             with c2_3:
-                shift_y2 = st.slider("Geser Y Pcs 2", -float(bh), float(bh * 1.5), float(bh * 0.2), step=0.1)
+                shift_y2 = st.slider("Geser Y Pcs 2", -float(bh*2), float(bh * 2), 0.0, step=0.1)
 
             st.markdown("##### 🟢 Komponen 3 (Awal Baris 2)")
             c3_1, c3_2, c3_3 = st.columns(3)
             with c3_1:
                 rot3 = st.slider("Rotasi Pcs 3 (°)", 0, 360, rot1, step=5)
             with c3_2:
-                r2_shift_x = st.slider("Geser X Pcs 3", -float(bw*1.5), float(bw*1.5), float(bw * 0.5), step=0.1)
+                r2_shift_x = st.slider("Geser X Pcs 3", -float(bw*2), float(bw*2), float(bw * 0.5), step=0.1)
             with c3_3:
-                r2_shift_y = st.slider("Geser Y Pcs 3", float(bh * 0.2), float(bh * 2.0), float(bh * 0.8), step=0.1)
+                r2_shift_y = st.slider("Geser Y Pcs 3", -float(bh*2), float(bh*2), float(bh * 0.8), step=0.1)
 
-        # GEOMETRI 3 KOMPONEN
+        # MURNI TANPA ZEROING/DISTORSI AXIS
+        # 1. Pcs 1 (Base Origin)
         p1_rot = rotate(base_poly, rot1, origin='center')
-        minx1, miny1, _, _ = p1_rot.bounds
-        poly1_custom = translate(p1_rot, xoff=-minx1 + shift_x1, yoff=-miny1 + shift_y1)
+        p1_poly = translate(p1_rot, xoff=shift_x1, yoff=shift_y1)
 
+        # 2. Pcs 2 (Posisi Murni terhadap Axis & Slider)
         p2_rot = rotate(base_poly, rot2, origin='center')
-        minx2, miny2, _, _ = p2_rot.bounds
-        poly2_custom = translate(p2_rot, xoff=-minx2 + shift_x2, yoff=-miny2 + shift_y2)
+        p2_poly = translate(p2_rot, xoff=shift_x2, yoff=shift_y2)
 
+        # 3. Pcs 3 (Posisi Murni Awal Baris 2)
         p3_rot = rotate(base_poly, rot3, origin='center')
-        minx3, miny3, _, _ = p3_rot.bounds
-        poly3_custom = translate(p3_rot, xoff=-minx3 + r2_shift_x, yoff=-miny3 + r2_shift_y)
+        p3_poly = translate(p3_rot, xoff=r2_shift_x, yoff=r2_shift_y)
 
-        # Normalisasi Pasangan Master (Unit Pair)
-        p_minx = min(poly1_custom.bounds[0], poly2_custom.bounds[0])
-        p_miny = min(poly1_custom.bounds[1], poly2_custom.bounds[1])
+        # Dapatkan Bounding Box Gabungan untuk Normalisasi Tampilan Preview Canvas
+        min_canvas_x = min(p1_poly.bounds[0], p2_poly.bounds[0], p3_poly.bounds[0])
+        min_canvas_y = min(p1_poly.bounds[1], p2_poly.bounds[1], p3_poly.bounds[1])
 
-        poly1_zero = translate(poly1_custom, xoff=-p_minx, yoff=-p_miny)
-        poly2_zero = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
-        poly3_zero = translate(poly3_custom, xoff=-p_minx, yoff=-p_miny)
-
-        # Lebar Efektif Pasangan (Unit Width)
-        pair_max_x = max(poly1_zero.bounds[2], poly2_zero.bounds[2])
-        pair_min_x = min(poly1_zero.bounds[0], poly2_zero.bounds[0])
-        unit_w = pair_max_x - pair_min_x
-
-        # Vektor Pergeseran Pasangan Baris Genap
-        row2_offset_x = poly3_zero.bounds[0] - poly1_zero.bounds[0]
-        row2_offset_y = poly3_zero.bounds[1] - poly1_zero.bounds[1]
-
-        # Padding Preview
         pad = 5.0
-        p1_unit = translate(poly1_zero, xoff=pad, yoff=pad)
-        p2_unit = translate(poly2_zero, xoff=pad, yoff=pad)
-        p3_unit = translate(poly3_zero, xoff=pad, yoff=pad)
+        p1_preview = translate(p1_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
+        p2_preview = translate(p2_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
+        p3_preview = translate(p3_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
 
-        u1_b = p1_unit.buffer(inter_gap / 2)
-        u2_b = p2_unit.buffer(inter_gap / 2)
-        u3_b = p3_unit.buffer(inter_gap / 2)
+        # DETEKSI TABRAKAN REALTIME PREVIEW
+        u1_b = p1_preview.buffer(inter_gap / 2)
+        u2_b = p2_preview.buffer(inter_gap / 2)
+        u3_b = p3_preview.buffer(inter_gap / 2)
 
         collide_12 = u1_b.intersects(u2_b)
         collide_13 = u1_b.intersects(u3_b)
@@ -177,13 +164,13 @@ if uploaded_file is not None:
             else:
                 st.success("✅ 3 Komponen Bebas Tabrakan (Layout Safe)")
 
-            pw = max(p1_unit.bounds[2], p2_unit.bounds[2], p3_unit.bounds[2]) + pad
-            ph = max(p1_unit.bounds[3], p2_unit.bounds[3], p3_unit.bounds[3]) + pad
+            pw = max(p1_preview.bounds[2], p2_preview.bounds[2], p3_preview.bounds[2]) + pad
+            ph = max(p1_preview.bounds[3], p2_preview.bounds[3], p3_preview.bounds[3]) + pad
             
-            svg_3pcs = generate_svg_3pcs_preview(p1_unit, p2_unit, p3_unit, width_cm=max(pw, 25), height_cm=max(ph, 25))
+            svg_3pcs = generate_svg_3pcs_preview(p1_preview, p2_preview, p3_preview, width_cm=max(pw, 25), height_cm=max(ph, 25))
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
-        # --- STEP 2: DUPLIKASI PASANGAN UTUH KE LEMBARAN ---
+        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH ---
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -195,31 +182,38 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            step_x = unit_w + inter_gap
+            # Vektor jarak antar pasangan sejajar horizontal
+            pair_w = max(p1_poly.bounds[2], p2_poly.bounds[2]) - min(p1_poly.bounds[0], p2_poly.bounds[0])
+            step_x = pair_w + inter_gap
+
+            # Vektor Pergeseran Baris (Row 1 ke Row 2)
+            row_step_x = p3_poly.bounds[0] - p1_poly.bounds[0]
+            row_step_y = p3_poly.bounds[1] - p1_poly.bounds[1]
+
+            # Zeroing Master Polygons untuk Rendering Sheet
+            base_min_x = min(p1_poly.bounds[0], p2_poly.bounds[0])
+            base_min_y = min(p1_poly.bounds[1], p2_poly.bounds[1])
+
+            p1_master = translate(p1_poly, xoff=-base_min_x, yoff=-base_min_y)
+            p2_master = translate(p2_poly, xoff=-base_min_x, yoff=-base_min_y)
 
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
                 
-                # Koordinat Y baris diturunkan sesuai pergeseran vertikal Komponen 3
-                row_y = margin + (row_idx * row2_offset_y)
-                
-                # Pergeseran X selang-seling (Zig-Zag)
-                x_shift = row2_offset_x if is_row_even else 0.0
+                row_y = margin + (row_idx * row_step_y)
+                x_shift = row_step_x if is_row_even else 0.0
 
-                # Cek apakah melewati batas panjang bahan
-                if row_y + min(poly1_zero.bounds[3], poly2_zero.bounds[3]) > (sheet_length - margin):
+                if row_y + min(p1_master.bounds[3], p2_master.bounds[3]) > (sheet_length - margin):
                     break
 
                 curr_x = margin + x_shift
 
-                # Kembalikan x ke batas margin lembaran jika negatif
                 while curr_x < margin:
                     curr_x += step_x
 
-                while item_idx < total_items and (curr_x + unit_w) <= (sheet_width - margin):
-                    # Pasangkan sebagai SATU BLOK UTUH
-                    p1 = translate(poly1_zero, xoff=curr_x, yoff=row_y)
-                    p2 = translate(poly2_zero, xoff=curr_x, yoff=row_y)
+                while item_idx < total_items and (curr_x + pair_w) <= (sheet_width - margin):
+                    p1 = translate(p1_master, xoff=curr_x, yoff=row_y)
+                    p2 = translate(p2_master, xoff=curr_x, yoff=row_y)
 
                     p1_valid = (p1.bounds[2] <= sheet_width - margin) and (p1.bounds[3] <= sheet_length - margin) and (p1.bounds[0] >= margin)
                     p2_valid = (p2.bounds[2] <= sheet_width - margin) and (p2.bounds[3] <= sheet_length - margin) and (p2.bounds[0] >= margin)
