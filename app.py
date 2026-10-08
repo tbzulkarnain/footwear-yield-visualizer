@@ -6,8 +6,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("⚡ Footwear Material Yield Visualizer (3-Component Full Control)")
-st.caption("Atur Rotasi & Posisi 3 Komponen Master -> Bebas Tabrakan -> Duplikasi Ke Lembaran Utuh")
+st.title("⚡ Footwear Material Yield Visualizer (3-Component Master Preview)")
+st.caption("Atur 3 Komponen Master -> Duplikasi Matriks Presisi 100% Bebas Tabrakan")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -120,13 +120,13 @@ if uploaded_file is not None:
             st.markdown("##### 🟢 Komponen 3 (Awal Baris 2)")
             c3_1, c3_2, c3_3 = st.columns(3)
             with c3_1:
-                rot3 = st.slider("Rotasi Pcs 3 (°)", 0, 360, 0, step=5)
+                rot3 = st.slider("Rotasi Pcs 3 (°)", 0, 360, rot1, step=5)
             with c3_2:
                 r2_shift_x = st.slider("Geser X Pcs 3", -float(bw*1.5), float(bw*1.5), float(bw * 0.5), step=0.1)
             with c3_3:
-                r2_shift_y = st.slider("Geser Y Pcs 3", float(bh * 0.2), float(bh * 1.5), float(bh * 0.8), step=0.1)
+                r2_shift_y = st.slider("Geser Y Pcs 3", float(bh * 0.2), float(bh * 2.0), float(bh * 0.8), step=0.1)
 
-        # KALKULASI GEOMETRI 3 KOMPONEN
+        # GEOMETRI 3 KOMPONEN
         p1_rot = rotate(base_poly, rot1, origin='center')
         minx1, miny1, _, _ = p1_rot.bounds
         poly1_custom = translate(p1_rot, xoff=-minx1 + shift_x1, yoff=-miny1 + shift_y1)
@@ -139,21 +139,29 @@ if uploaded_file is not None:
         minx3, miny3, _, _ = p3_rot.bounds
         poly3_custom = translate(p3_rot, xoff=-minx3 + r2_shift_x, yoff=-miny3 + r2_shift_y)
 
-        # Normalisasi Unit Pair
+        # Normalisasi Unit Pair Baris 1 ke Titik Nol (0,0)
         p_minx = min(poly1_custom.bounds[0], poly2_custom.bounds[0])
         p_miny = min(poly1_custom.bounds[1], poly2_custom.bounds[1])
-        p_maxx = max(poly1_custom.bounds[2], poly2_custom.bounds[2])
-        p_maxy = max(poly1_custom.bounds[3], poly2_custom.bounds[3])
 
-        unit_w = p_maxx - p_minx
-        unit_h = p_maxy - p_miny
+        poly1_zero = translate(poly1_custom, xoff=-p_minx, yoff=-p_miny)
+        poly2_zero = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
+        poly3_zero = translate(poly3_custom, xoff=-p_minx, yoff=-p_miny)
 
+        # Lebar Efektif Pasangan (Unit Width & Height)
+        unit_w = max(poly1_zero.bounds[2], poly2_zero.bounds[2]) - min(poly1_zero.bounds[0], poly2_zero.bounds[0])
+        unit_h = max(poly1_zero.bounds[3], poly2_zero.bounds[3]) - min(poly1_zero.bounds[1], poly2_zero.bounds[1])
+
+        # Vektor Pergeseran Baris 2 relatif terhadap Komponen 1
+        row2_offset_x = poly3_zero.bounds[0] - poly1_zero.bounds[0]
+        row2_offset_y = poly3_zero.bounds[1] - poly1_zero.bounds[1]
+
+        # Padding Tampilan Preview
         pad = 5.0
-        p1_unit = translate(poly1_custom, xoff=-p_minx + pad, yoff=-p_miny + pad)
-        p2_unit = translate(poly2_custom, xoff=-p_minx + pad, yoff=-p_miny + pad)
-        p3_unit = translate(poly3_custom, xoff=-p_minx + pad, yoff=-p_miny + pad)
+        p1_unit = translate(poly1_zero, xoff=pad, yoff=pad)
+        p2_unit = translate(poly2_zero, xoff=pad, yoff=pad)
+        p3_unit = translate(poly3_zero, xoff=pad, yoff=pad)
 
-        # DETEKSI TABRAKAN ANTARELEMENT
+        # DETEKSI TABRAKAN REALTIME PREVIEW
         u1_b = p1_unit.buffer(inter_gap / 2)
         u2_b = p2_unit.buffer(inter_gap / 2)
         u3_b = p3_unit.buffer(inter_gap / 2)
@@ -175,15 +183,11 @@ if uploaded_file is not None:
             svg_3pcs = generate_svg_3pcs_preview(p1_unit, p2_unit, p3_unit, width_cm=max(pw, 25), height_cm=max(ph, 25))
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
-        # --- STEP 2: DUPLIKASI KE UTUH ---
+        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH ---
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
         if st.button("📊 Duplikasi & Render Full Sheet Layout", type="primary"):
-            poly1_real = translate(poly1_custom, xoff=-p_minx, yoff=-p_miny)
-            poly2_real = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
-            poly3_real = translate(poly3_custom, xoff=-p_minx, yoff=-p_miny)
-
             placed_polygons = []
             total_pattern_area = 0.0
 
@@ -193,36 +197,45 @@ if uploaded_file is not None:
 
             curr_base_y = margin
 
-            while item_idx < total_items and (curr_base_y + min(poly1_real.bounds[3], poly2_real.bounds[3])) <= (sheet_length - margin):
+            # Step per x (jarak antar pasangan sejajar horizontal)
+            step_x = unit_w + inter_gap
+
+            while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 0)
                 
-                row_y = margin + (row_idx * r2_shift_y)
-                x_offset = r2_shift_x if not is_row_even else 0.0
+                # Hitung Y Baris Berdasarkan Vektor Pergeseran
+                row_y = margin + (row_idx * row2_offset_y)
+                
+                # Pergeseran X Selang-Seling Baris
+                x_shift = (row_idx * row2_offset_x)
 
-                curr_x = margin + x_offset
+                # Jika Y melampaui lembaran, hentikan
+                if row_y + min(poly1_zero.bounds[3], poly2_zero.bounds[3]) > (sheet_length - margin):
+                    break
 
+                curr_x = margin + x_shift
+
+                # Kembalikan x ke area lembaran jika terlalu ke kiri/kanan
                 while curr_x < margin:
-                    curr_x += (unit_w + inter_gap)
+                    curr_x += step_x
 
                 while item_idx < total_items and (curr_x + unit_w) <= (sheet_width - margin):
-                    # Gunakan bentuk rotasi Komponen 3 jika berada di baris genap
-                    p1_pattern = poly3_real if not is_row_even else poly1_real
-                    p2_pattern = poly2_real
-
-                    p1 = translate(p1_pattern, xoff=curr_x, yoff=row_y)
+                    # Komponen 1 (Biru)
+                    p1 = translate(poly1_zero, xoff=curr_x, yoff=row_y)
                     if p1.bounds[2] <= (sheet_width - margin) and p1.bounds[3] <= (sheet_length - margin) and p1.bounds[0] >= margin:
                         placed_polygons.append((p1, 0))
                         total_pattern_area += p1.area
                         item_idx += 1
 
+                    # Komponen 2 (Merah)
                     if item_idx < total_items:
-                        p2 = translate(p2_pattern, xoff=curr_x, yoff=row_y)
+                        p2 = translate(poly2_zero, xoff=curr_x, yoff=row_y)
                         if p2.bounds[2] <= (sheet_width - margin) and p2.bounds[3] <= (sheet_length - margin) and p2.bounds[0] >= margin:
                             placed_polygons.append((p2, 1))
                             total_pattern_area += p2.area
                             item_idx += 1
 
-                    curr_x += unit_w + inter_gap
+                    curr_x += step_x
 
                 row_idx += 1
 
