@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (6 ProCost Categories)")
-st.caption("Rotasi Manual + Preview Visual Real-time + Presets Layout ProCost Instan")
+st.title("⚡ Footwear Material Yield Visualizer (ProCost Precision)")
+st.caption("Atur Offset Pasangan Manual -> Layout Pasangan 100% Bebas Tabrakan")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -73,15 +73,14 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
 
 
 def generate_svg_preview_pair(p1, p2, width_cm=40, height_cm=30):
-    """Fungsi untuk merender gambar preview 2 komponen awal"""
     scale = 10
     svg_w = width_cm * scale
     svg_h = height_cm * scale
 
     svg_code = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg" style="background-color:#F8F9FA; border:2px dashed #666; border-radius:8px;">'
-    items = [(p1, "#3388ff", "🔵 Pcs 1"), (p2, "#ff4444", "🔴 Pcs 2")]
+    items = [(p1, "#3388ff"), (p2, "#ff4444")]
 
-    for poly, col, label in items:
+    for poly, col in items:
         pts = list(poly.exterior.coords)
         pts_str = " ".join([f"{p[0] * scale:.1f},{p[1] * scale:.1f}" for p in pts])
         svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="1.5" opacity="0.85"/>'
@@ -106,49 +105,57 @@ if uploaded_file is not None:
         bw = base_poly.bounds[2] - base_poly.bounds[0]
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
-        # STEP 1: ROTASI MANUAL OPERATOR & PREVIEW REALTIME
+        # STEP 1: ATUR ROTASI DAN DISTANSI PASANGAN
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Atur Rotasi & Preview Komponen")
+        st.subheader("🛠️ Step 1: Atur Posisi & Pasangan Master")
 
         col_ctrl, col_prev = st.columns([1.1, 0.9])
 
         with col_ctrl:
-            st.markdown("##### ⚙️ Kontrol Rotasi & Kategori Layout")
-            rot_p1 = st.slider("Rotasi Komponen Utama / Pcs 1 (°)", 0, 360, 90, step=5)
-            rot_p2 = st.slider("Rotasi Komponen Pasangan / Pcs 2 (°)", 0, 360, 270, step=5)
+            st.markdown("##### ⚙️ Kontrol Rotasi & Jarak Pasangan")
+            rot_p1 = st.slider("Rotasi Pcs 1 / Biru (°)", 0, 360, 90, step=5)
+            rot_p2 = st.slider("Rotasi Pcs 2 / Merah (°)", 0, 360, 270, step=5)
+            
+            # SLIDER UNTUK MENGATUR TABRAKAN PASANGAN
+            pair_offset_x = st.slider("Atur Jarak X Pcs 2 (Merah ke Biru)", 0.0, float(bw * 2), float(bw * 0.7), step=0.1)
 
             category = st.selectbox(
                 "Pilih Kategori ProCost",
                 [
+                    "Category 5: Pair Parallel (Pasangan Utuh Lurus)",
+                    "Category 6: Pair Staggered (Pasangan Utuh Zig-Zag)",
                     "Category 1: One Way Straight (1 Arah Lurus)",
                     "Category 2: Two Way Interlock (2 Arah 180°)",
                     "Category 3: One Way Staggered (1 Arah Zig-Zag Baris)",
-                    "Category 4: Two Way Staggered (2 Arah Zig-Zag Baris)",
-                    "Category 5: Pair Parallel (Pasangan Utuh Lurus)",
-                    "Category 6: Pair Staggered (Pasangan Utuh Zig-Zag)"
+                    "Category 4: Two Way Staggered (2 Arah Zig-Zag Baris)"
                 ]
             )
 
-        # HITUNG GEOMETRI PREVIEW DARI SLIDER
+        # BENTUK GEOMETRI KEDUA PCS
         p1 = rotate(base_poly, rot_p1, origin='center')
         p1 = translate(p1, xoff=-p1.bounds[0], yoff=-p1.bounds[1])
 
         p2 = rotate(base_poly, rot_p2, origin='center')
         p2 = translate(p2, xoff=-p2.bounds[0], yoff=-p2.bounds[1])
+        p2 = translate(p2, xoff=pair_offset_x, yoff=0.0)
 
-        # ATUR POSISI PREVIEW DUA KOMPONEN BERDAMPINGAN
-        p1_prev = translate(p1, xoff=2.0, yoff=2.0)
-        p2_prev = translate(p2, xoff=p1.bounds[2] + 4.0, yoff=2.0)
-
-        prev_w = max(p1_prev.bounds[2], p2_prev.bounds[2]) + 5.0
-        prev_h = max(p1_prev.bounds[3], p2_prev.bounds[3]) + 5.0
+        # PREVIEW PASANGAN MASTER
+        prev_w = max(p1.bounds[2], p2.bounds[2]) + 5.0
+        prev_h = max(p1.bounds[3], p2.bounds[3]) + 5.0
 
         with col_prev:
-            st.markdown("##### 👁️ Preview Rotasi Awal Komponen")
-            svg_preview = generate_svg_preview_pair(p1_prev, p2_prev, width_cm=max(prev_w, 25), height_cm=max(prev_h, 20))
+            st.markdown("##### 👁️ Preview Master Pasangan (Pcs 1 & Pcs 2)")
+            
+            # DETEKSI BENTURAN PASANGAN
+            if p1.buffer(inter_gap/2).intersects(p2.buffer(inter_gap/2)):
+                st.error("⚠️ Pasangan masih bertabrakan! Geser slider 'Jarak X Pcs 2' ke kanan.")
+            else:
+                st.success("✅ Jarak Pasangan Aman (Bebas Tabrakan)")
+
+            svg_preview = generate_svg_preview_pair(p1, p2, width_cm=max(prev_w, 25), height_cm=max(prev_h, 20))
             st.components.v1.html(svg_preview, height=280, scrolling=False)
 
-        # STEP 2: DUPLIKASI PROCOST INSTAN
+        # STEP 2: DUPLIKASI KE SHEET
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -160,91 +167,54 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # ----------------------------------------------------
-            # PERHITUNGAN PITCH OTOMATIS SESUAI KATEGORI PROCOST
-            # ----------------------------------------------------
-            
-            if "Category 1" in category:
-                step_x = p1.bounds[2] + inter_gap
-                pitch_y = p1.bounds[3] + inter_gap
-                stagger_x = 0.0
+            # HITUNG BOUNDING BOX UTUH 1 PASANG (P1 + P2)
+            pair_width = max(p1.bounds[2], p2.bounds[2])
+            pair_height = max(p1.bounds[3], p2.bounds[3])
 
-            elif "Category 2" in category:
-                pair_w = max(p1.bounds[2], p2.bounds[2])
-                step_x = pair_w + inter_gap
-                pitch_y = max(p1.bounds[3], p2.bounds[3]) + inter_gap
-                stagger_x = 0.0
-
-            elif "Category 3" in category:
-                step_x = p1.bounds[2] + inter_gap
-                pitch_y = (p1.bounds[3] * 0.75) + inter_gap
-                stagger_x = (p1.bounds[2] / 2)
-
-            elif "Category 4" in category:
-                pair_w = max(p1.bounds[2], p2.bounds[2])
-                step_x = pair_w + inter_gap
-                pitch_y = (max(p1.bounds[3], p2.bounds[3]) * 0.75) + inter_gap
-                stagger_x = pair_w / 2
-
-            elif "Category 5" in category:
-                pair_w = (p1.bounds[2] + p2.bounds[2]) * 0.85
-                step_x = pair_w + inter_gap
-                pitch_y = max(p1.bounds[3], p2.bounds[3]) + inter_gap
-                stagger_x = 0.0
-
-            else:
-                pair_w = (p1.bounds[2] + p2.bounds[2]) * 0.85
-                step_x = pair_w + inter_gap
-                pitch_y = (max(p1.bounds[3], p2.bounds[3]) * 0.75) + inter_gap
-                stagger_x = pair_w / 2
-
-            # ----------------------------------------------------
-            # RENDER MATRIKS UTUH
-            # ----------------------------------------------------
+            step_x = pair_width + inter_gap
+            pitch_y = pair_height + inter_gap
+            stagger_x = (step_x / 2) if "Staggered" in category else 0.0
 
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
-
                 row_y = margin + (row_idx * pitch_y)
 
-                if row_y + min(p1.bounds[3], p2.bounds[3]) > (sheet_length - margin):
+                if row_y + pair_height > (sheet_length - margin):
                     break
 
                 x_shift = stagger_x if is_row_even else 0.0
                 row_start_x = margin + x_shift
 
+                # Auto-fill ruang kosong di kiri
                 while row_start_x - step_x >= margin:
                     row_start_x -= step_x
 
                 curr_x = row_start_x
 
                 while item_idx < total_items and curr_x <= (sheet_width - margin):
-                    # Pasang Komponen 1 (Biru)
                     cand_p1 = translate(p1, xoff=curr_x, yoff=row_y)
+                    cand_p2 = translate(p2, xoff=curr_x, yoff=row_y)
+
                     p1_in = (cand_p1.bounds[0] >= margin and cand_p1.bounds[2] <= sheet_width - margin and 
                              cand_p1.bounds[1] >= margin and cand_p1.bounds[3] <= sheet_length - margin)
+                    p2_in = (cand_p2.bounds[0] >= margin and cand_p2.bounds[2] <= sheet_width - margin and 
+                             cand_p2.bounds[1] >= margin and cand_p2.bounds[3] <= sheet_length - margin)
 
                     if p1_in:
                         placed_polygons.append((cand_p1, 0))
                         total_pattern_area += cand_p1.area
                         item_idx += 1
 
-                    # Pasang Komponen 2 (Merah)
-                    if item_idx < total_items:
-                        cand_p2 = translate(p2, xoff=curr_x + (step_x * 0.45), yoff=row_y)
-                        p2_in = (cand_p2.bounds[0] >= margin and cand_p2.bounds[2] <= sheet_width - margin and 
-                                 cand_p2.bounds[1] >= margin and cand_p2.bounds[3] <= sheet_length - margin)
-
-                        if p2_in:
-                            placed_polygons.append((cand_p2, 1))
-                            total_pattern_area += cand_p2.area
-                            item_idx += 1
+                    if item_idx < total_items and p2_in:
+                        placed_polygons.append((cand_p2, 1))
+                        total_pattern_area += cand_p2.area
+                        item_idx += 1
 
                     curr_x += step_x
 
                 row_idx += 1
 
-            # SUMMARY METRICS
+            # METRICS SUMMARY
             total_sheet_area = sheet_width * sheet_length
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
             used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
