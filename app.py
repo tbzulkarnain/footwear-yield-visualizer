@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (ProCost Precision)")
-st.caption("Atur Offset Pasangan Manual -> Layout Pasangan 100% Bebas Tabrakan")
+st.title("⚡ Footwear Material Yield Visualizer (Dynamic 6 ProCost Categories)")
+st.caption("Kategori Layout ProCost Berbeda Sesuai Aturan Masing-Masing")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -72,13 +72,15 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
         return []
 
 
-def generate_svg_preview_pair(p1, p2, width_cm=40, height_cm=30):
+def generate_svg_preview_pair(p1, p2, width_cm=40, height_cm=30, show_p2=True):
     scale = 10
     svg_w = width_cm * scale
     svg_h = height_cm * scale
 
     svg_code = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg" style="background-color:#F8F9FA; border:2px dashed #666; border-radius:8px;">'
-    items = [(p1, "#3388ff"), (p2, "#ff4444")]
+    items = [(p1, "#3388ff")]
+    if show_p2:
+        items.append((p2, "#ff4444"))
 
     for poly, col in items:
         pts = list(poly.exterior.coords)
@@ -105,57 +107,69 @@ if uploaded_file is not None:
         bw = base_poly.bounds[2] - base_poly.bounds[0]
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
-        # STEP 1: ATUR ROTASI DAN DISTANSI PASANGAN
+        # STEP 1: KONTROL ROTASI & KATEGORI
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Atur Posisi & Pasangan Master")
+        st.subheader("🛠️ Step 1: Atur Posisi & Pilih Kategori Layout")
 
         col_ctrl, col_prev = st.columns([1.1, 0.9])
 
         with col_ctrl:
-            st.markdown("##### ⚙️ Kontrol Rotasi & Jarak Pasangan")
+            st.markdown("##### ⚙️ Kontrol Rotasi & Kategori ProCost")
             rot_p1 = st.slider("Rotasi Pcs 1 / Biru (°)", 0, 360, 90, step=5)
-            rot_p2 = st.slider("Rotasi Pcs 2 / Merah (°)", 0, 360, 270, step=5)
             
-            # SLIDER UNTUK MENGATUR TABRAKAN PASANGAN
-            pair_offset_x = st.slider("Atur Jarak X Pcs 2 (Merah ke Biru)", 0.0, float(bw * 2), float(bw * 0.7), step=0.1)
-
             category = st.selectbox(
                 "Pilih Kategori ProCost",
                 [
-                    "Category 5: Pair Parallel (Pasangan Utuh Lurus)",
-                    "Category 6: Pair Staggered (Pasangan Utuh Zig-Zag)",
                     "Category 1: One Way Straight (1 Arah Lurus)",
                     "Category 2: Two Way Interlock (2 Arah 180°)",
                     "Category 3: One Way Staggered (1 Arah Zig-Zag Baris)",
-                    "Category 4: Two Way Staggered (2 Arah Zig-Zag Baris)"
+                    "Category 4: Two Way Staggered (2 Arah Zig-Zag Baris)",
+                    "Category 5: Pair Parallel (Pasangan Utuh Lurus)",
+                    "Category 6: Pair Staggered (Pasangan Utuh Zig-Zag)"
                 ]
             )
 
-        # BENTUK GEOMETRI KEDUA PCS
+            is_pair_cat = "Pair" in category
+            is_twoway_cat = "Two Way" in category
+
+            if is_pair_cat or is_twoway_cat:
+                default_rot2 = (rot_p1 + 180) % 360 if is_twoway_cat else 270
+                rot_p2 = st.slider("Rotasi Pcs 2 / Merah (°)", 0, 360, int(default_rot2), step=5)
+            else:
+                rot_p2 = rot_p1
+
+            if is_pair_cat:
+                pair_offset_x = st.slider("Atur Jarak X Pcs 2 (Merah ke Biru)", 0.0, float(bw * 2), float(bw * 0.7), step=0.1)
+            else:
+                pair_offset_x = 0.0
+
+        # HITUNG GEOMETRI P1 & P2
         p1 = rotate(base_poly, rot_p1, origin='center')
         p1 = translate(p1, xoff=-p1.bounds[0], yoff=-p1.bounds[1])
 
         p2 = rotate(base_poly, rot_p2, origin='center')
         p2 = translate(p2, xoff=-p2.bounds[0], yoff=-p2.bounds[1])
-        p2 = translate(p2, xoff=pair_offset_x, yoff=0.0)
+        if is_pair_cat:
+            p2 = translate(p2, xoff=pair_offset_x, yoff=0.0)
 
-        # PREVIEW PASANGAN MASTER
+        # PREVIEW MASTER
         prev_w = max(p1.bounds[2], p2.bounds[2]) + 5.0
         prev_h = max(p1.bounds[3], p2.bounds[3]) + 5.0
 
         with col_prev:
-            st.markdown("##### 👁️ Preview Master Pasangan (Pcs 1 & Pcs 2)")
-            
-            # DETEKSI BENTURAN PASANGAN
-            if p1.buffer(inter_gap/2).intersects(p2.buffer(inter_gap/2)):
-                st.error("⚠️ Pasangan masih bertabrakan! Geser slider 'Jarak X Pcs 2' ke kanan.")
+            st.markdown("##### 👁️ Preview Master Layout")
+            if is_pair_cat:
+                if p1.buffer(inter_gap/2).intersects(p2.buffer(inter_gap/2)):
+                    st.error("⚠️ Pasangan bertabrakan! Geser slider 'Jarak X Pcs 2' ke kanan.")
+                else:
+                    st.success("✅ Jarak Pasangan Aman")
             else:
-                st.success("✅ Jarak Pasangan Aman (Bebas Tabrakan)")
+                st.info(f"💡 Layout Mode: **{category.split(':')[0]}**")
 
-            svg_preview = generate_svg_preview_pair(p1, p2, width_cm=max(prev_w, 25), height_cm=max(prev_h, 20))
+            svg_preview = generate_svg_preview_pair(p1, p2, width_cm=max(prev_w, 25), height_cm=max(prev_h, 20), show_p2=(is_pair_cat or is_twoway_cat))
             st.components.v1.html(svg_preview, height=280, scrolling=False)
 
-        # STEP 2: DUPLIKASI KE SHEET
+        # STEP 2: DUPLIKASI SPESIFIK SESUAI KATEGORI
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -167,54 +181,162 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # HITUNG BOUNDING BOX UTUH 1 PASANG (P1 + P2)
-            pair_width = max(p1.bounds[2], p2.bounds[2])
-            pair_height = max(p1.bounds[3], p2.bounds[3])
+            # ----------------------------------------------------
+            # ATURAN MINGGIR & PITCH BERDASARKAN KATEGORI
+            # ----------------------------------------------------
 
-            step_x = pair_width + inter_gap
-            pitch_y = pair_height + inter_gap
-            stagger_x = (step_x / 2) if "Staggered" in category else 0.0
-
-            while item_idx < total_items:
-                is_row_even = (row_idx % 2 == 1)
-                row_y = margin + (row_idx * pitch_y)
-
-                if row_y + pair_height > (sheet_length - margin):
-                    break
-
-                x_shift = stagger_x if is_row_even else 0.0
-                row_start_x = margin + x_shift
-
-                # Auto-fill ruang kosong di kiri
-                while row_start_x - step_x >= margin:
-                    row_start_x -= step_x
-
-                curr_x = row_start_x
-
-                while item_idx < total_items and curr_x <= (sheet_width - margin):
-                    cand_p1 = translate(p1, xoff=curr_x, yoff=row_y)
-                    cand_p2 = translate(p2, xoff=curr_x, yoff=row_y)
-
-                    p1_in = (cand_p1.bounds[0] >= margin and cand_p1.bounds[2] <= sheet_width - margin and 
-                             cand_p1.bounds[1] >= margin and cand_p1.bounds[3] <= sheet_length - margin)
-                    p2_in = (cand_p2.bounds[0] >= margin and cand_p2.bounds[2] <= sheet_width - margin and 
-                             cand_p2.bounds[1] >= margin and cand_p2.bounds[3] <= sheet_length - margin)
-
-                    if p1_in:
-                        placed_polygons.append((cand_p1, 0))
-                        total_pattern_area += cand_p1.area
+            if "Category 1" in category:
+                # 1-Way Straight: Murni P1 berurutan
+                step_x = p1.bounds[2] + inter_gap
+                pitch_y = p1.bounds[3] + inter_gap
+                
+                while item_idx < total_items:
+                    row_y = margin + (row_idx * pitch_y)
+                    if row_y + p1.bounds[3] > (sheet_length - margin):
+                        break
+                    
+                    curr_x = margin
+                    while item_idx < total_items and (curr_x + p1.bounds[2]) <= (sheet_width - margin):
+                        cand = translate(p1, xoff=curr_x, yoff=row_y)
+                        placed_polygons.append((cand, 0))
+                        total_pattern_area += cand.area
                         item_idx += 1
+                        curr_x += step_x
 
-                    if item_idx < total_items and p2_in:
-                        placed_polygons.append((cand_p2, 1))
-                        total_pattern_area += cand_p2.area
+                    row_idx += 1
+
+            elif "Category 2" in category:
+                # 2-Way Interlock: P1 (0°) & P2 (180°) Selang-Seling Horizontal
+                w_unit = max(p1.bounds[2], p2.bounds[2])
+                step_x = w_unit + inter_gap
+                pitch_y = max(p1.bounds[3], p2.bounds[3]) + inter_gap
+
+                while item_idx < total_items:
+                    row_y = margin + (row_idx * pitch_y)
+                    if row_y + max(p1.bounds[3], p2.bounds[3]) > (sheet_length - margin):
+                        break
+                    
+                    curr_x = margin
+                    col_idx = 0
+                    while item_idx < total_items and (curr_x + w_unit) <= (sheet_width - margin):
+                        p_curr = p1 if col_idx % 2 == 0 else p2
+                        color_idx = 0 if col_idx % 2 == 0 else 1
+                        cand = translate(p_curr, xoff=curr_x, yoff=row_y)
+                        placed_polygons.append((cand, color_idx))
+                        total_pattern_area += cand.area
                         item_idx += 1
+                        curr_x += step_x
+                        col_idx += 1
 
-                    curr_x += step_x
+                    row_idx += 1
 
-                row_idx += 1
+            elif "Category 3" in category:
+                # 1-Way Staggered: P1 Murni dengan Baris Genap Geser Horizontal
+                step_x = p1.bounds[2] + inter_gap
+                pitch_y = p1.bounds[3] + inter_gap
+                stagger_x = step_x / 2
 
-            # METRICS SUMMARY
+                while item_idx < total_items:
+                    is_row_even = (row_idx % 2 == 1)
+                    row_y = margin + (row_idx * pitch_y)
+                    if row_y + p1.bounds[3] > (sheet_length - margin):
+                        break
+                    
+                    row_start_x = margin + (stagger_x if is_row_even else 0.0)
+                    while row_start_x - step_x >= margin:
+                        row_start_x -= step_x
+
+                    curr_x = row_start_x
+                    while item_idx < total_items and curr_x <= (sheet_width - margin):
+                        if curr_x >= margin and (curr_x + p1.bounds[2]) <= (sheet_width - margin):
+                            cand = translate(p1, xoff=curr_x, yoff=row_y)
+                            placed_polygons.append((cand, 0))
+                            total_pattern_area += cand.area
+                            item_idx += 1
+                        curr_x += step_x
+
+                    row_idx += 1
+
+            elif "Category 4" in category:
+                # 2-Way Staggered: P1 & P2 Selang-seling + Baris Genap Geser Horizontal
+                w_unit = max(p1.bounds[2], p2.bounds[2])
+                step_x = w_unit + inter_gap
+                pitch_y = max(p1.bounds[3], p2.bounds[3]) + inter_gap
+                stagger_x = step_x / 2
+
+                while item_idx < total_items:
+                    is_row_even = (row_idx % 2 == 1)
+                    row_y = margin + (row_idx * pitch_y)
+                    if row_y + max(p1.bounds[3], p2.bounds[3]) > (sheet_length - margin):
+                        break
+                    
+                    row_start_x = margin + (stagger_x if is_row_even else 0.0)
+                    while row_start_x - step_x >= margin:
+                        row_start_x -= step_x
+
+                    curr_x = row_start_x
+                    col_idx = 0
+                    while item_idx < total_items and curr_x <= (sheet_width - margin):
+                        if curr_x >= margin and (curr_x + w_unit) <= (sheet_width - margin):
+                            p_curr = p1 if col_idx % 2 == 0 else p2
+                            color_idx = 0 if col_idx % 2 == 0 else 1
+                            cand = translate(p_curr, xoff=curr_x, yoff=row_y)
+                            placed_polygons.append((cand, color_idx))
+                            total_pattern_area += cand.area
+                            item_idx += 1
+                        curr_x += step_x
+                        col_idx += 1
+
+                    row_idx += 1
+
+            else:
+                # Category 5 & 6: Pair Unit (Blok Pasangan P1 + P2)
+                pair_width = max(p1.bounds[2], p2.bounds[2])
+                pair_height = max(p1.bounds[3], p2.bounds[3])
+
+                step_x = pair_width + inter_gap
+                pitch_y = pair_height + inter_gap
+                stagger_x = (step_x / 2) if "Category 6" in category else 0.0
+
+                while item_idx < total_items:
+                    is_row_even = (row_idx % 2 == 1)
+                    row_y = margin + (row_idx * pitch_y)
+
+                    if row_y + pair_height > (sheet_length - margin):
+                        break
+
+                    x_shift = stagger_x if is_row_even else 0.0
+                    row_start_x = margin + x_shift
+
+                    while row_start_x - step_x >= margin:
+                        row_start_x -= step_x
+
+                    curr_x = row_start_x
+
+                    while item_idx < total_items and curr_x <= (sheet_width - margin):
+                        cand_p1 = translate(p1, xoff=curr_x, yoff=row_y)
+                        cand_p2 = translate(p2, xoff=curr_x, yoff=row_y)
+
+                        p1_in = (cand_p1.bounds[0] >= margin and cand_p1.bounds[2] <= sheet_width - margin and 
+                                 cand_p1.bounds[1] >= margin and cand_p1.bounds[3] <= sheet_length - margin)
+                        p2_in = (cand_p2.bounds[0] >= margin and cand_p2.bounds[2] <= sheet_width - margin and 
+                                 cand_p2.bounds[1] >= margin and cand_p2.bounds[3] <= sheet_length - margin)
+
+                        if p1_in:
+                            placed_polygons.append((cand_p1, 0))
+                            total_pattern_area += cand_p1.area
+                            item_idx += 1
+
+                        if item_idx < total_items and p2_in:
+                            placed_polygons.append((cand_p2, 1))
+                            total_pattern_area += cand_p2.area
+                            item_idx += 1
+
+                        curr_x += step_x
+
+                    row_idx += 1
+
+            # SUMMARY METRICS
             total_sheet_area = sheet_width * sheet_length
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
             used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
