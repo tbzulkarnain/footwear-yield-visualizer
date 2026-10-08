@@ -248,7 +248,7 @@ if uploaded_file is not None:
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
         # ====================================================
-        # STEP 2: FIXED MODULAR PAIR REPEAT
+        # STEP 2: FIXED MODULAR PAIR REPEAT (EXACT STEP 1 Y-OFFSET)
         # ====================================================
 
         st.markdown("---")
@@ -256,27 +256,27 @@ if uploaded_file is not None:
 
         if st.button("📊 Repeat Master Setup To Sheet", type="primary"):
 
-            # 1. PASANGAN MASTER (P1 & P2)
+            # 1. NORMALISASI PASANGAN MASTER (P1 & P2) KE ORIGIN (0,0)
             pair_min_x = min(p1_poly.bounds[0], p2_poly.bounds[0])
             pair_min_y = min(p1_poly.bounds[1], p2_poly.bounds[1])
 
             p1_m = translate(p1_poly, xoff=-pair_min_x, yoff=-pair_min_y)
             p2_m = translate(p2_poly, xoff=-pair_min_x, yoff=-pair_min_y)
 
-            # Dimensions Of One Pair
+            # Lebar Efektif Pasangan P1 + P2
             pair_w = max(p1_m.bounds[2], p2_m.bounds[2]) - min(p1_m.bounds[0], p2_m.bounds[0])
-            pair_h = max(p1_m.bounds[3], p2_m.bounds[3]) - min(p1_m.bounds[1], p2_m.bounds[1])
+            step_x = pair_w + inter_gap
 
-            # 2. VEKTOR INTERLOCK DARI P3 (AKURAT)
-            # Offset X untuk Zig-zag Baris Genap
+            # 2. VEKTOR PERGESERAN MURNI DARI KOMPONEN 3 (HIJAU) KE KOMPONEN 1 (BIRU)
+            # Selisih X untuk Zig-Zag Baris Genap
             stagger_x = p3_poly.bounds[0] - p1_poly.bounds[0]
 
-            # Pitch Vertikal (Y): Mengambil jarak vertikal P3 terhadap P1 secara absolut
-            pitch_y = abs(p3_poly.bounds[1] - p1_poly.bounds[1])
-            if pitch_y < 1.0:
-                pitch_y = pair_h + inter_gap
-
-            step_x = pair_w + inter_gap
+            # Selisih Y Murni dari Slider Pcs 3 (Bisa Rapat Menyeliap)
+            pitch_y = p3_poly.bounds[1] - p1_poly.bounds[1]
+            
+            # Jika Y Komponen 3 diatur mendekati 0 atau negatif, gunakan batas minimum jarak aman
+            if pitch_y <= 0:
+                pitch_y = (max(p1_m.bounds[3], p2_m.bounds[3]) - min(p1_m.bounds[1], p2_m.bounds[1])) * 0.6
 
             placed_polygons = []
             total_pattern_area = 0.0
@@ -290,6 +290,7 @@ if uploaded_file is not None:
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
 
+                # Jarak Y murni mengikuti offset Pcs 3 dari Step 1
                 row_y = margin + (row_idx * pitch_y)
                 x_shift = stagger_x if is_row_even else 0.0
 
@@ -308,7 +309,7 @@ if uploaded_file is not None:
                     buf1 = cand_p1.buffer(inter_gap / 2)
                     buf2 = cand_p2.buffer(inter_gap / 2)
 
-                    # Validasi Lembaran
+                    # Validasi Margin Sheet
                     p1_in = (cand_p1.bounds[2] <= sheet_width - margin) and (cand_p1.bounds[3] <= sheet_length - margin) and (cand_p1.bounds[0] >= margin)
                     p2_in = (cand_p2.bounds[2] <= sheet_width - margin) and (cand_p2.bounds[3] <= sheet_length - margin) and (cand_p2.bounds[0] >= margin)
 
@@ -325,9 +326,6 @@ if uploaded_file is not None:
 
                         total_pattern_area += (cand_p1.area + cand_p2.area)
                         item_idx += 2
-                    else:
-                        # Jika terjadi gesekan akibat slider yang terlalu mepet, beri jarak mikro
-                        pass
 
                     curr_x += step_x
 
