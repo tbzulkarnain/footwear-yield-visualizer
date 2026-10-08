@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (Real-time Interactive Preview)")
-st.caption("Penataan Berbasis Kotak dengan Preview Instan & Kontrol Manual Offset")
+st.title("⚡ Footwear Material Yield Visualizer (Unified Grid & Preview)")
+st.caption("Sinkronisasi Sempurna Preview dan Render Penuh Tanpa Jarak Loncat")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -21,9 +21,8 @@ sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value
 sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
 margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, step=0.5)
 
-# Input gap antar komponen dalam milimeter (mm) standar pisau/laser
 inter_gap_mm = st.sidebar.number_input("Gap Antar Komponen / Pisau (mm)", value=2.0, min_value=0.0, max_value=20.0, step=0.5)
-inter_gap_cm = inter_gap_mm / 10.0  # Konversi ke cm
+inter_gap_cm = inter_gap_mm / 10.0
 
 target_pairs = st.sidebar.number_input("Jumlah Pasang Target (Pairs)", value=50, min_value=1, step=1)
 
@@ -74,19 +73,18 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
         return []
 
 
-def generate_svg_preview_pair(p1, p2, width_cm=40, height_cm=30, show_p2=True):
+def generate_svg_preview_pair(polygons_to_show, width_cm=40, height_cm=30):
     scale = 10
     svg_w = width_cm * scale
     svg_h = height_cm * scale
 
     svg_code = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg" style="background-color:#F8F9FA; border:2px dashed #666; border-radius:8px;">'
-    items = [(p1, "#3388ff")]
-    if show_p2:
-        items.append((p2, "#ff4444"))
-
-    for poly, col in items:
+    
+    colors = ['#3388ff', '#ff4444']
+    for idx, poly in enumerate(polygons_to_show):
         pts = list(poly.exterior.coords)
         pts_str = " ".join([f"{p[0] * scale:.1f},{p[1] * scale:.1f}" for p in pts])
+        col = colors[idx % len(colors)]
         svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="1.5" opacity="0.85"/>'
 
     svg_code += "</svg>"
@@ -140,72 +138,83 @@ if uploaded_file is not None:
             else:
                 rot_p2 = rot_p1
 
-            if is_pair_cat:
-                pair_offset_x = st.slider("Atur Jarak X Pcs 2 (Merah ke Biru)", 0.0, float(bw * 2), float(bw * 0.7), step=0.1)
-            else:
-                pair_offset_x = 0.0
+            # SLIDER FINE-TUNE (DIGABUNGKAN UNTUK SEMUA KATEGORI TERMASUK PAIR 5 & 6)
+            st.markdown("##### 🎛️ Penyesuaian Spasi Grid & Jarak Antar Komponen")
+            fine_tune_x = st.slider("Fine-tune Jarak Kolom / Step X", -float(bw), float(bw * 2), 0.0, step=0.1, help="Atur jarak horizontal antar komponen (bisa digeser untuk merapatkan atau mengatur jarak antar pasangan)")
+            fine_tune_y = st.slider("Fine-tune Jarak Baris / Pitch Y", -float(bh), float(bh), 0.0, step=0.1, help="Geser minus (-) untuk merapatkan jarak vertikal antar baris")
 
-            # KONTROL TAMBAHAN: SLIDER MANUAL ADJUSTMENT (LIVE UPDATE)
-            st.markdown("##### 🎛️ Penyesuaian Spasi Grid Manual (Bebas Bentuk)")
-            fine_tune_x = st.slider("Fine-tune Jarak Kolom (Step X Adjustment)", -float(bw), float(bw), 0.0, step=0.1, help="Geser minus (-) untuk merapatkan jarak horizontal antar komponen")
-            fine_tune_y = st.slider("Fine-tune Jarak Baris (Pitch Y Adjustment)", -float(bh), float(bh), 0.0, step=0.1, help="Geser minus (-) untuk merapatkan jarak vertikal antar baris")
-
-        # HITUNG GEOMETRI P1 & P2 UNTUK PREVIEW LIVE & RENDER
+        # HITUNG GEOMETRI P1 & P2
         p1 = rotate(base_poly, rot_p1, origin='center')
         p1 = translate(p1, xoff=-p1.bounds[0], yoff=-p1.bounds[1])
 
         p2 = rotate(base_poly, rot_p2, origin='center')
         p2 = translate(p2, xoff=-p2.bounds[0], yoff=-p2.bounds[1])
-        if is_pair_cat:
-            p2 = translate(p2, xoff=pair_offset_x, yoff=0.0)
 
-        # Jika fine_tune diubah, kita bisa aplikasikan pratinjau jarak langsung pada preview unit jika diperlukan,
-        # atau preview menampilkan unit dasar yang berinteraksi dengan gap aktif.
-        p2_preview = translate(p2, xoff=fine_tune_x, yoff=fine_tune_y) if (is_pair_cat or is_twoway_cat) else translate(p1, xoff=inter_gap_cm + fine_tune_x, yoff=0)
+        p1_w = p1.bounds[2] - p1.bounds[0]
+        p1_h = p1.bounds[3] - p1.bounds[1]
+        p2_w = p2.bounds[2] - p2.bounds[0]
+        p2_h = p2.bounds[3] - p2.bounds[1]
 
-        # PREVIEW MASTER (LANGSUNG LIVE TERUPDATE SAAT SLIDER DIGESER)
-        prev_w = max(p1.bounds[2], p2_preview.bounds[2]) + 5.0
-        prev_h = max(p1.bounds[3], p2_preview.bounds[3]) + 5.0
+        # TENTUKAN STEP & PITCH BERDASARKAN KATEGORI
+        if "Category 1" in category:
+            step_x = p1_w + inter_gap_cm + fine_tune_x
+            pitch_y = p1_h + inter_gap_cm + fine_tune_y
+            preview_items = [p1, translate(p1, xoff=step_x, yoff=0)]
 
+        elif "Category 2" in category:
+            w_unit = max(p1_w, p2_w)
+            h_unit = max(p1_h, p2_h)
+            step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
+            pitch_y = h_unit + inter_gap_cm + fine_tune_y
+            preview_items = [p1, translate(p2, xoff=step_x, yoff=0)]
+
+        elif "Category 3" in category:
+            step_x = p1_w + inter_gap_cm + fine_tune_x
+            pitch_y = p1_h + inter_gap_cm + fine_tune_y
+            preview_items = [p1, translate(p1, xoff=step_x, yoff=0), translate(p1, xoff=step_x/2, yoff=pitch_y)]
+
+        elif "Category 4" in category:
+            w_unit = max(p1_w, p2_w)
+            h_unit = max(p1_h, p2_h)
+            step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
+            pitch_y = h_unit + inter_gap_cm + fine_tune_y
+            preview_items = [p1, translate(p2, xoff=step_x, yoff=0), translate(p1, xoff=step_x/2, yoff=pitch_y)]
+
+        else:
+            # Category 5 & 6 (Pair): fine_tune_x berfungsi mengatur jarak merapat/renggang P2 terhadap P1
+            pair_gap_x = fine_tune_x if fine_tune_x >= 0 else 0.0
+            p2 = translate(p2, xoff=p1_w + pair_gap_x, yoff=0.0)
+            
+            pair_width = max(p2.bounds[2] - p1.bounds[0], p1_w + p2_w + pair_gap_x)
+            pair_height = max(p1_h, p2_h)
+            
+            step_x = pair_width + inter_gap_cm
+            pitch_y = pair_height + inter_gap_cm + fine_tune_y
+            preview_items = [p1, p2]
+
+        # LIVE PREVIEW MASTER
         with col_prev:
-            st.markdown("##### 👁️ Live Preview Master Layout")
-            if is_pair_cat:
-                if p1.buffer(inter_gap_cm/2).intersects(p2.buffer(inter_gap_cm/2)):
-                    st.error("⚠️ Pasangan bertabrakan! Geser slider 'Jarak X Pcs 2' ke kanan.")
-                else:
-                    st.success("✅ Jarak Pasangan Aman")
-            else:
-                st.info(f"💡 Layout Mode: **{category.split(':')[0]}** | Spasi Kolom/Baris: {fine_tune_x:+.1f} / {fine_tune_y:+.1f} cm")
-
-            # Preview menampilkan P1 dan P2 dengan posisi penyesuaian live
-            show_second_pcs = (is_pair_cat or is_twoway_cat)
-            svg_preview = generate_svg_preview_pair(p1, p2_preview if show_second_pcs else translate(p1, xoff=p1.bounds[2]-p1.bounds[0]+inter_gap_cm+fine_tune_x, yoff=0), width_cm=max(prev_w, 25), height_cm=max(prev_h, 20), show_p2=True)
+            st.markdown("##### 👁️ Live Preview Master Layout (Sinkron)")
+            st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.1f} cm | Pitch Y: {pitch_y:.1f} cm")
+            svg_preview = generate_svg_preview_pair(preview_items, width_cm=45, height_cm=28)
             st.components.v1.html(svg_preview, height=280, scrolling=False)
 
-        # STEP 2: DUPLIKASI BERBASIS BOUNDING BOX DENGAN FINE-TUNE OFFSET
+        # STEP 2: DUPLIKASI KE LEMBARAN UTUH
         st.markdown("---")
         st.subheader("🚀 Step 2: Render Hasil Penuh ke Lembaran Bahan")
 
         if st.button("📊 Render Layout ProCost", type="primary"):
             placed_polygons = []
             total_pattern_area = 0.0
-
             total_items = target_pairs * 2
             item_idx = 0
             row_idx = 0
 
-            p1_w = p1.bounds[2] - p1.bounds[0]
-            p1_h = p1.bounds[3] - p1.bounds[1]
-
             if "Category 1" in category:
-                step_x = p1_w + inter_gap_cm + fine_tune_x
-                pitch_y = p1_h + inter_gap_cm + fine_tune_y
-                
                 while item_idx < total_items:
                     row_y = margin + (row_idx * pitch_y)
                     if row_y + p1_h > (sheet_length - margin):
                         break
-                    
                     curr_x = margin
                     while item_idx < total_items and (curr_x + p1_w) <= (sheet_width - margin):
                         cand = translate(p1, xoff=curr_x, yoff=row_y)
@@ -213,51 +222,40 @@ if uploaded_file is not None:
                         total_pattern_area += cand.area
                         item_idx += 1
                         curr_x += step_x
-
                     row_idx += 1
 
             elif "Category 2" in category:
-                w_unit = max(p1.bounds[2], p2.bounds[2])
-                h_unit = max(p1.bounds[3], p2.bounds[3])
-                step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
-                pitch_y = h_unit + inter_gap_cm + fine_tune_y
-
+                h_unit = max(p1_h, p2_h)
                 while item_idx < total_items:
                     row_y = margin + (row_idx * pitch_y)
                     if row_y + h_unit > (sheet_length - margin):
                         break
-                    
                     curr_x = margin
                     col_idx = 0
                     while item_idx < total_items and curr_x <= (sheet_width - margin):
                         p_curr = p1 if col_idx % 2 == 0 else p2
                         color_idx = 0 if col_idx % 2 == 0 else 1
+                        current_w = p1_w if col_idx % 2 == 0 else p2_w
                         cand = translate(p_curr, xoff=curr_x, yoff=row_y)
                         
-                        if curr_x >= margin and (curr_x + (p1.bounds[2]-p1.bounds[0] if col_idx % 2 == 0 else p2.bounds[2]-p2.bounds[0])) <= (sheet_width - margin):
+                        if curr_x >= margin and (curr_x + current_w) <= (sheet_width - margin):
                             placed_polygons.append((cand, color_idx))
                             total_pattern_area += cand.area
                             item_idx += 1
                         curr_x += step_x
                         col_idx += 1
-
                     row_idx += 1
 
             elif "Category 3" in category:
-                step_x = p1_w + inter_gap_cm + fine_tune_x
-                pitch_y = p1_h + inter_gap_cm + fine_tune_y
                 stagger_x = step_x / 2
-
                 while item_idx < total_items:
                     is_row_even = (row_idx % 2 == 1)
                     row_y = margin + (row_idx * pitch_y)
                     if row_y + p1_h > (sheet_length - margin):
                         break
-                    
                     row_start_x = margin + (stagger_x if is_row_even else 0.0)
                     while row_start_x - step_x >= margin:
                         row_start_x -= step_x
-
                     curr_x = row_start_x
                     while item_idx < total_items and curr_x <= (sheet_width - margin):
                         if curr_x >= margin and (curr_x + p1_w) <= (sheet_width - margin):
@@ -266,66 +264,52 @@ if uploaded_file is not None:
                             total_pattern_area += cand.area
                             item_idx += 1
                         curr_x += step_x
-
                     row_idx += 1
 
             elif "Category 4" in category:
-                w_unit = max(p1.bounds[2], p2.bounds[2])
-                h_unit = max(p1.bounds[3], p2.bounds[3])
-                step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
-                pitch_y = h_unit + inter_gap_cm + fine_tune_y
+                h_unit = max(p1_h, p2_h)
                 stagger_x = step_x / 2
-
                 while item_idx < total_items:
                     is_row_even = (row_idx % 2 == 1)
                     row_y = margin + (row_idx * pitch_y)
                     if row_y + h_unit > (sheet_length - margin):
                         break
-                    
                     row_start_x = margin + (stagger_x if is_row_even else 0.0)
                     while row_start_x - step_x >= margin:
                         row_start_x -= step_x
-
                     curr_x = row_start_x
                     col_idx = 0
                     while item_idx < total_items and curr_x <= (sheet_width - margin):
                         p_curr = p1 if col_idx % 2 == 0 else p2
                         color_idx = 0 if col_idx % 2 == 0 else 1
+                        current_w = p1_w if col_idx % 2 == 0 else p2_w
                         cand = translate(p_curr, xoff=curr_x, yoff=row_y)
                         
-                        if curr_x >= margin and (curr_x + (p1.bounds[2]-p1.bounds[0] if col_idx % 2 == 0 else p2.bounds[2]-p2.bounds[0])) <= (sheet_width - margin):
+                        if curr_x >= margin and (curr_x + current_w) <= (sheet_width - margin):
                             placed_polygons.append((cand, color_idx))
                             total_pattern_area += cand.area
                             item_idx += 1
                         curr_x += step_x
                         col_idx += 1
-
                     row_idx += 1
 
             else:
-                # Category 5 & 6: Pair Unit
-                pair_width = max(p1.bounds[2], p2.bounds[2])
-                pair_height = max(p1.bounds[3], p2.bounds[3])
-
-                step_x = pair_width + inter_gap_cm + fine_tune_x
-                pitch_y = pair_height + inter_gap_cm + fine_tune_y
+                # Category 5 & 6 (Pair Unit)
+                pair_height = max(p1_h, p2_h)
                 stagger_x = (step_x / 2) if "Category 6" in category else 0.0
 
                 while item_idx < total_items:
                     is_row_even = (row_idx % 2 == 1)
                     row_y = margin + (row_idx * pitch_y)
-
                     if row_y + pair_height > (sheet_length - margin):
                         break
 
                     x_shift = stagger_x if is_row_even else 0.0
                     row_start_x = margin + x_shift
-
                     while row_start_x - step_x >= margin:
                         row_start_x -= step_x
 
                     curr_x = row_start_x
-
                     while item_idx < total_items and curr_x <= (sheet_width - margin):
                         cand_p1 = translate(p1, xoff=curr_x, yoff=row_y)
                         cand_p2 = translate(p2, xoff=curr_x, yoff=row_y)
@@ -346,7 +330,6 @@ if uploaded_file is not None:
                             item_idx += 1
 
                         curr_x += step_x
-
                     row_idx += 1
 
             # SUMMARY METRICS
