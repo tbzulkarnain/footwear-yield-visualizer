@@ -78,9 +78,9 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
         return []
 
 
-def generate_svg_preview_grid(items_with_color, width_cm=45, height_cm=30):
-    # Skala diperbesar (8.0) agar tampilan preview jelas, dengan stroke tipis proporsional
-    scale = 8.0
+def generate_svg_preview_grid(items_with_color, width_cm=60, height_cm=40):
+    # Skala disesuaikan agar gambar tampil utuh (tidak terpotong) di kotak preview
+    scale = 4.5
     svg_w = width_cm * scale
     svg_h = height_cm * scale
 
@@ -91,7 +91,7 @@ def generate_svg_preview_grid(items_with_color, width_cm=45, height_cm=30):
         pts = list(poly.exterior.coords)
         pts_str = " ".join([f"{p[0] * scale:.2f},{p[1] * scale:.2f}" for p in pts])
         col = color_map.get(color_idx % 2, '#3388ff')
-        svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="0.5" opacity="0.85"/>'
+        svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="0.8" opacity="0.85"/>'
 
     svg_code += "</svg>"
     return svg_code
@@ -206,12 +206,12 @@ if uploaded_file is not None:
             preview_items.append((translate(p1, xoff=row2_x1, yoff=row2_y), 0))
             preview_items.append((translate(p2, xoff=row2_x2, yoff=row2_y), 1))
 
-        # LIVE PREVIEW MASTER (2 BARIS) DI SISI KANAN
+        # LIVE PREVIEW MASTER (2 BARIS) DI SISI KANAN (Tinggi kontainer komponen web diperbesar ke 320px agar area muat penuh)
         with col_prev:
             st.markdown("##### 👁️ Live Preview Grid (2 Baris)")
             st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.1f} cm | Pitch Y: {pitch_y:.1f} cm")
-            svg_preview = generate_svg_preview_grid(preview_items, width_cm=45, height_cm=30)
-            st.components.v1.html(svg_preview, height=270, scrolling=False)
+            svg_preview = generate_svg_preview_grid(preview_items, width_cm=60, height_cm=40)
+            st.components.v1.html(svg_preview, height=320, scrolling=False)
 
         # ============================================================
         # TAHAP 2: RENDER HASIL PENUH KE LEMBARAN BAHAN
@@ -334,8 +334,8 @@ if uploaded_file is not None:
 
             st.info(f"💡 **Consumption Rate:** {consumption_per_pcs:.4f} m² / pcs | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
-            # RENDER SVG FULL SHEET (Skala besar 8.0 dengan ketebalan garis tipis presisi 0.4 agar bentuk komponen terlihat jelas dan rapi)
-            scale_f = 8.0
+            # RENDER SVG FULL SHEET
+            scale_f = 6.0
             svg_w_f = sheet_width * scale_f
             svg_h_f = sheet_length * scale_f
 
@@ -355,7 +355,7 @@ if uploaded_file is not None:
                 pts = list(poly.exterior.coords)
                 pts_str = " ".join([f"{p[0] * scale_f:.2f},{p[1] * scale_f:.2f}" for p in pts])
                 fill_col = '#3388ff' if idx % 2 == 0 else '#ff4444'
-                svg_full += f'<polygon points="{pts_str}" fill="{fill_col}" stroke="#111" stroke-width="0.4" opacity="0.85"/>'
+                svg_full += f'<polygon points="{pts_str}" fill="{fill_col}" stroke="#111" stroke-width="0.6" opacity="0.85"/>'
 
             svg_full += '</svg>'
             st.components.v1.html(svg_full, height=650, scrolling=True)
