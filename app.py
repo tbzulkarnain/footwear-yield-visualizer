@@ -17,7 +17,7 @@ st.markdown("---")
 # TAHAP 1: SETUP PARAMETER UTAMA DI HALAMAN UTAMA (COMPACT GRID)
 # ============================================================
 
-st.subheader("📋 Setup Parameter Bahan & Target")
+st.subheader("📋 Setup Parameter Bahan & Target (Standar ProCost)")
 col_p1, col_p2, col_p3, col_p4 = st.columns(4)
 
 with col_p1:
@@ -27,7 +27,9 @@ with col_p2:
 with col_p3:
     margin = st.number_input("Margin Pinggir (cm)", value=1.0, step=0.5)
 with col_p4:
-    target_pieces = st.number_input("Target Komponen (Pcs)", value=100, min_value=1, step=1)
+    target_pairs = st.number_input("Target Sepatu (Pasang)", value=50, min_value=1, step=1)
+    # Total pcs komponen yang harus dipotong otomatis 2x lipat dari target pasang (Kiri & Kanan)
+    target_pieces = target_pairs * 2
 
 uploaded_file = st.file_uploader("Upload Gambar Pattern Component Master", type=["png", "jpg", "jpeg"])
 
@@ -79,14 +81,13 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
 
 
 def generate_svg_preview_grid(items_with_color, width_cm=60, height_cm=40):
-    # Skala disesuaikan agar gambar tampil utuh (tidak terpotong) di kotak preview
     scale = 4.5
     svg_w = width_cm * scale
     svg_h = height_cm * scale
 
     svg_code = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg" style="background-color:#F8F9FA; border:2px dashed #666; border-radius:8px;">'
     
-    color_map = {0: '#3388ff', 1: '#ff4444'} # 0 = Biru, 1 = Merah
+    color_map = {0: '#3388ff', 1: '#ff4444'}
     for poly, color_idx in items_with_color:
         pts = list(poly.exterior.coords)
         pts_str = " ".join([f"{p[0] * scale:.2f},{p[1] * scale:.2f}" for p in pts])
@@ -114,7 +115,6 @@ if uploaded_file is not None:
         st.markdown("---")
         st.subheader("🛠️ Konfigurasi Tata Letak & Fine-tune Presisi")
 
-        # Layout 2 Kolom Utama (Kontrol di Kiri, Preview di Kanan)
         col_ctrl, col_prev = st.columns([1.1, 0.9])
 
         with col_ctrl:
@@ -206,7 +206,6 @@ if uploaded_file is not None:
             preview_items.append((translate(p1, xoff=row2_x1, yoff=row2_y), 0))
             preview_items.append((translate(p2, xoff=row2_x2, yoff=row2_y), 1))
 
-        # LIVE PREVIEW MASTER (2 BARIS) DI SISI KANAN (Tinggi kontainer komponen web diperbesar ke 320px agar area muat penuh)
         with col_prev:
             st.markdown("##### 👁️ Live Preview Grid (2 Baris)")
             st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.1f} cm | Pitch Y: {pitch_y:.1f} cm")
@@ -312,7 +311,7 @@ if uploaded_file is not None:
                         col_idx += 1
                     row_idx += 1
 
-            # SUMMARY METRICS
+            # SUMMARY METRICS (Dikonversi ke Format Pasang / Pairs Ala ProCost)
             total_sheet_area = sheet_width * sheet_length
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
             used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
@@ -322,17 +321,20 @@ if uploaded_file is not None:
             total_waste = 100.0 - component_yield
 
             pieces_completed = len(placed_polygons)
-            consumption_per_pcs = (used_sheet_area / 10000) / max(pieces_completed, 1)
+            pairs_completed = pieces_completed // 2  # Konversi total pcs ke jumlah pasang sepatu
+            
+            # Konsumsi per pasang (m² / pair) - Standar Utama ProCost
+            consumption_per_pair = (used_sheet_area / 10000) / max(pairs_completed, 1)
 
-            st.markdown("### 📊 Yield & Material Consumption Summary")
+            st.markdown("### 📊 Yield & Material Consumption Summary (ProCost Standard)")
             m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("Komponen Terpasang", f"{pieces_completed} pcs")
+            m1.metric("Sepatu Terpasang", f"{pairs_completed} pasang")
             m2.metric("Total Net Area", f"{total_pattern_area:.1f} cm²")
             m3.metric("Component Yield", f"{component_yield:.2f} %")
             m4.metric("Overall Sheet Yield", f"{overall_sheet_yield:.2f} %")
             m5.metric("Cutting Waste", f"{total_waste:.2f} %")
 
-            st.info(f"💡 **Consumption Rate:** {consumption_per_pcs:.4f} m² / pcs | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
+            st.info(f"💡 **Consumption Standard (ProCost):** **{consumption_per_pair:.4f} m² / pair** | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
             # RENDER SVG FULL SHEET
             scale_f = 6.0
