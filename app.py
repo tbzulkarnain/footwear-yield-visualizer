@@ -10,14 +10,14 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer")
+st.title("⚡ Footwear Material Yield Visualizer (ProCost Standard)")
 st.markdown("---")
 
 # ============================================================
 # TAHAP 1: SETUP PARAMETER UTAMA DI HALAMAN UTAMA (COMPACT GRID)
 # ============================================================
 
-st.subheader("📋 Setup Parameter Bahan & Target (Standar ProCost)")
+st.subheader("📋 Setup Parameter Bahan & Target")
 col_p1, col_p2, col_p3, col_p4 = st.columns(4)
 
 with col_p1:
@@ -310,34 +310,45 @@ if uploaded_file is not None:
                         col_idx += 1
                     row_idx += 1
 
-            # SUMMARY METRICS & PROCOST YIELD CALCULATION
-            total_sheet_area = sheet_width * sheet_length
-            max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
-            used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
-
+            # ============================================================
+            # PERHITUNGAN STANDAR PROCOST (PER PAIR)
+            # ============================================================
             pieces_completed = len(placed_polygons)
-            pairs_completed = pieces_completed // 2  # Total pasang sepatu
+            pairs_completed = max(pieces_completed // 2, 1)
 
-            # Hitung ProCost Yield (Pairs per Meter Panjang Bahan)
-            used_length_m = max_used_y / 100.0  # konversi cm ke meter
-            procost_yield_per_m = pairs_completed / used_length_m if used_length_m > 0 else 0.0
+            # Net Area per Pair (cm²) -> Luas 1 pcs * 2 (karena 1 pasang = 1 kiri & 1 kanan)
+            single_net_area = base_poly.area
+            net_area_per_pair = single_net_area * 2.0
+
+            # Panjang bahan terpakai aktual (cm)
+            max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else sheet_length
             
-            # Konsumsi per pasang (m² / pair) -> 1 / yield_per_m * (lebar_bahan_meter)
-            sheet_width_m = sheet_width / 100.0
-            consumption_per_pair = (1.0 / procost_yield_per_m) * sheet_width_m if procost_yield_per_m > 0 else 0.0
+            # Gross Area per Pair (cm²) -> (Lebar Sheet * Panjang Terpakai) / Total Pasang
+            used_sheet_area = sheet_width * max_used_y
+            gross_area_per_pair = used_sheet_area / pairs_completed
 
-            utilization_rate = (total_pattern_area / used_sheet_area) * 100 if used_sheet_area > 0 else 0.0
-            total_waste = 100.0 - utilization_rate
+            # Waste Area per Pair (cm²) -> Gross Area - Net Area
+            waste_area_per_pair = gross_area_per_pair - net_area_per_pair
 
-            st.markdown("### 📊 Yield & Material Consumption Summary (ProCost Standard)")
-            m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("Sepatu Terpasang", f"{pairs_completed} pasang")
-            m2.metric("ProCost Yield", f"{procost_yield_per_m:.2f} pairs/m")
-            m3.metric("Consumption Rate", f"{consumption_per_pair:.4f} m²/pair")
-            m4.metric("Material Utilization", f"{utilization_rate:.2f} %")
-            m5.metric("Cutting Waste", f"{total_waste:.2f} %")
+            # Efficiency (%) -> (Net Area / Gross Area) * 100
+            efficiency = (net_area_per_pair / gross_area_per_pair) * 100 if gross_area_per_pair > 0 else 0.0
 
-            st.info(f"💡 **Formula ProCost Check:** 1 / Yield ({procost_yield_per_m:.2f}) × Lebar ({sheet_width_m:.2f}m) = **{consumption_per_pair:.4f} m²/pair** | Panjang Terpakai: {max_used_y:.1f} cm")
+            # Yield (per unit length) -> Pairs per cm (atau satuan unit panjang standar ProCost)
+            # ProCost biasanya menghitung yield per unit panjang (misal pasang per satuan panjang marker)
+            procost_yield = pairs_completed / max_used_y if max_used_y > 0 else 0.0
+
+            # TAMPILAN TABEL/METRIK ALA PROCOST
+            st.markdown("### 📊 ProCost Summary Table")
+            
+            col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
+            col_m1.metric("Parts per pair", "2.00")
+            col_m2.metric("Net Area / pair", f"{net_area_per_pair:.4f} cm²")
+            col_m3.metric("Gross Area / pair", f"{gross_area_per_pair:.4f} cm²")
+            col_m4.metric("Waste Area / pair", f"{waste_area_per_pair:.4f} cm²")
+            col_m5.metric("Efficiency (%)", f"{efficiency:.2f} %")
+            col_m6.metric("Yield (per unit)", f"{procost_yield:.4f}")
+
+            st.info(f"💡 **Info Produksi:** Terpasang {pairs_completed} pasang ({pieces_completed} pcs) | Panjang Terpakai: **{max_used_y:.1f} cm** dari {sheet_length:.1f} cm")
 
             # RENDER SVG FULL SHEET
             scale_f = 6.0
