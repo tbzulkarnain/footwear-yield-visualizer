@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (Unified Grid & Preview)")
-st.caption("Sinkronisasi Sempurna Preview dan Render Penuh Tanpa Jarak Loncat")
+st.title("⚡ Footwear Material Yield Visualizer")
+st.caption("Penataan Berbasis Kotak dengan 4 Kategori Utama ProCost & Live Preview")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -24,7 +24,7 @@ margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, st
 inter_gap_mm = st.sidebar.number_input("Gap Antar Komponen / Pisau (mm)", value=2.0, min_value=0.0, max_value=20.0, step=0.5)
 inter_gap_cm = inter_gap_mm / 10.0
 
-target_pairs = st.sidebar.number_input("Jumlah Pasang Target (Pairs)", value=50, min_value=1, step=1)
+target_pieces = st.sidebar.number_input("Jumlah Target Komponen (Pcs)", value=100, min_value=1, step=1)
 
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE
@@ -123,24 +123,21 @@ if uploaded_file is not None:
                     "Category 1: One Way Straight (1 Arah Lurus)",
                     "Category 2: Two Way Interlock (2 Arah 180°)",
                     "Category 3: One Way Staggered (1 Arah Zig-Zag Baris)",
-                    "Category 4: Two Way Staggered (2 Arah Zig-Zag Baris)",
-                    "Category 5: Pair Parallel (Pasangan Utuh Lurus)",
-                    "Category 6: Pair Staggered (Pasangan Utuh Zig-Zag)"
+                    "Category 4: Two Way Staggered (2 Arah Zig-Zag Baris)"
                 ]
             )
 
-            is_pair_cat = "Pair" in category
             is_twoway_cat = "Two Way" in category
 
-            if is_pair_cat or is_twoway_cat:
-                default_rot2 = (rot_p1 + 180) % 360 if is_twoway_cat else 270
+            if is_twoway_cat:
+                default_rot2 = (rot_p1 + 180) % 360
                 rot_p2 = st.slider("Rotasi Pcs 2 / Merah (°)", 0, 360, int(default_rot2), step=5)
             else:
                 rot_p2 = rot_p1
 
-            # SLIDER FINE-TUNE (DIGABUNGKAN UNTUK SEMUA KATEGORI TERMASUK PAIR 5 & 6)
+            # SLIDER FINE-TUNE MANUAL
             st.markdown("##### 🎛️ Penyesuaian Spasi Grid & Jarak Antar Komponen")
-            fine_tune_x = st.slider("Fine-tune Jarak Kolom / Step X", -float(bw), float(bw * 2), 0.0, step=0.1, help="Atur jarak horizontal antar komponen (bisa digeser untuk merapatkan atau mengatur jarak antar pasangan)")
+            fine_tune_x = st.slider("Fine-tune Jarak Kolom / Step X", -float(bw), float(bw * 2), 0.0, step=0.1, help="Atur jarak horizontal antar komponen")
             fine_tune_y = st.slider("Fine-tune Jarak Baris / Pitch Y", -float(bh), float(bh), 0.0, step=0.1, help="Geser minus (-) untuk merapatkan jarak vertikal antar baris")
 
         # HITUNG GEOMETRI P1 & P2
@@ -155,7 +152,7 @@ if uploaded_file is not None:
         p2_w = p2.bounds[2] - p2.bounds[0]
         p2_h = p2.bounds[3] - p2.bounds[1]
 
-        # TENTUKAN STEP & PITCH BERDASARKAN KATEGORI
+        # TENTUKAN STEP & PITCH BERDASARKAN 4 KATEGORI
         if "Category 1" in category:
             step_x = p1_w + inter_gap_cm + fine_tune_x
             pitch_y = p1_h + inter_gap_cm + fine_tune_y
@@ -173,24 +170,12 @@ if uploaded_file is not None:
             pitch_y = p1_h + inter_gap_cm + fine_tune_y
             preview_items = [p1, translate(p1, xoff=step_x, yoff=0), translate(p1, xoff=step_x/2, yoff=pitch_y)]
 
-        elif "Category 4" in category:
+        else: # Category 4
             w_unit = max(p1_w, p2_w)
             h_unit = max(p1_h, p2_h)
             step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
             pitch_y = h_unit + inter_gap_cm + fine_tune_y
             preview_items = [p1, translate(p2, xoff=step_x, yoff=0), translate(p1, xoff=step_x/2, yoff=pitch_y)]
-
-        else:
-            # Category 5 & 6 (Pair): fine_tune_x berfungsi mengatur jarak merapat/renggang P2 terhadap P1
-            pair_gap_x = fine_tune_x if fine_tune_x >= 0 else 0.0
-            p2 = translate(p2, xoff=p1_w + pair_gap_x, yoff=0.0)
-            
-            pair_width = max(p2.bounds[2] - p1.bounds[0], p1_w + p2_w + pair_gap_x)
-            pair_height = max(p1_h, p2_h)
-            
-            step_x = pair_width + inter_gap_cm
-            pitch_y = pair_height + inter_gap_cm + fine_tune_y
-            preview_items = [p1, p2]
 
         # LIVE PREVIEW MASTER
         with col_prev:
@@ -206,7 +191,7 @@ if uploaded_file is not None:
         if st.button("📊 Render Layout ProCost", type="primary"):
             placed_polygons = []
             total_pattern_area = 0.0
-            total_items = target_pairs * 2
+            total_items = target_pieces
             item_idx = 0
             row_idx = 0
 
@@ -266,7 +251,7 @@ if uploaded_file is not None:
                         curr_x += step_x
                     row_idx += 1
 
-            elif "Category 4" in category:
+            else: # Category 4
                 h_unit = max(p1_h, p2_h)
                 stagger_x = step_x / 2
                 while item_idx < total_items:
@@ -293,45 +278,6 @@ if uploaded_file is not None:
                         col_idx += 1
                     row_idx += 1
 
-            else:
-                # Category 5 & 6 (Pair Unit)
-                pair_height = max(p1_h, p2_h)
-                stagger_x = (step_x / 2) if "Category 6" in category else 0.0
-
-                while item_idx < total_items:
-                    is_row_even = (row_idx % 2 == 1)
-                    row_y = margin + (row_idx * pitch_y)
-                    if row_y + pair_height > (sheet_length - margin):
-                        break
-
-                    x_shift = stagger_x if is_row_even else 0.0
-                    row_start_x = margin + x_shift
-                    while row_start_x - step_x >= margin:
-                        row_start_x -= step_x
-
-                    curr_x = row_start_x
-                    while item_idx < total_items and curr_x <= (sheet_width - margin):
-                        cand_p1 = translate(p1, xoff=curr_x, yoff=row_y)
-                        cand_p2 = translate(p2, xoff=curr_x, yoff=row_y)
-
-                        p1_in = (cand_p1.bounds[0] >= margin and cand_p1.bounds[2] <= sheet_width - margin and 
-                                 cand_p1.bounds[1] >= margin and cand_p1.bounds[3] <= sheet_length - margin)
-                        p2_in = (cand_p2.bounds[0] >= margin and cand_p2.bounds[2] <= sheet_width - margin and 
-                                 cand_p2.bounds[1] >= margin and cand_p2.bounds[3] <= sheet_length - margin)
-
-                        if p1_in:
-                            placed_polygons.append((cand_p1, 0))
-                            total_pattern_area += cand_p1.area
-                            item_idx += 1
-
-                        if item_idx < total_items and p2_in:
-                            placed_polygons.append((cand_p2, 1))
-                            total_pattern_area += cand_p2.area
-                            item_idx += 1
-
-                        curr_x += step_x
-                    row_idx += 1
-
             # SUMMARY METRICS
             total_sheet_area = sheet_width * sheet_length
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
@@ -341,18 +287,18 @@ if uploaded_file is not None:
             overall_sheet_yield = (total_pattern_area / total_sheet_area) * 100
             total_waste = 100.0 - component_yield
 
-            pairs_completed = len(placed_polygons) // 2
-            consumption_per_pair = (used_sheet_area / 10000) / max(pairs_completed, 1)
+            pieces_completed = len(placed_polygons)
+            consumption_per_pcs = (used_sheet_area / 10000) / max(pieces_completed, 1)
 
             st.markdown("### 📊 Yield & Material Consumption Summary")
             m1, m2, m3, m4, m5 = st.columns(5)
-            m1.metric("Komponen Terpasang", f"{len(placed_polygons)} pcs ({pairs_completed} pairs)")
+            m1.metric("Komponen Terpasang", f"{pieces_completed} pcs")
             m2.metric("Total Net Area", f"{total_pattern_area:.1f} cm²")
             m3.metric("Component Yield", f"{component_yield:.2f} %")
             m4.metric("Overall Sheet Yield", f"{overall_sheet_yield:.2f} %")
             m5.metric("Cutting Waste", f"{total_waste:.2f} %")
 
-            st.info(f"💡 **Consumption Rate:** {consumption_per_pair:.4f} m² / pair | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
+            st.info(f"💡 **Consumption Rate:** {consumption_per_pcs:.4f} m² / pcs | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
             # RENDER SVG FULL SHEET
             scale_f = 8
