@@ -4,7 +4,128 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.affinity import translate, rotate
 
+st.set_page_config(import numpy as np
+import cv2
+from PIL import Image
+import streamlit as st
+from streamlit_drawable_canvas import st_canvas
+
+# Konfigurasi Halaman Streamlit
 st.set_page_config(
+    page_title="Footwear Labor & Costing Estimator",
+    page_icon="👟",
+    layout="wide",
+)
+
+st.title("👟 Footwear Costing & Drawing Canvas AI")
+st.markdown(
+    "Unggah gambar pola komponen sepatu atau sketsa bagian *upper/bottom*, lalu gunakan kanvas interaktif di bawah untuk menandai area atau mengukur bentuk secara langsung."
+)
+
+# Sidebar untuk pengaturan kanvas dan kalkulasi
+st.sidebar.header("🛠️ Pengaturan Alat Kanvas")
+drawing_mode = st.sidebar.selectbox(
+    "Pilih Mode Menggambar:",
+    ("freedraw", "line", "rect", "circle", "polygon", "transform"),
+)
+
+stroke_width = st.sidebar.slider("Ketebalan Garis (Stroke Width): 2", 1, 25, 3)
+stroke_color = st.sidebar.color_picker(
+    "Warna Garis (Stroke Color):", "#FF0000"
+)
+bg_color = st.sidebar.color_picker(
+    "Warna Background Kanvas:", "#FFFFFF"
+)
+
+# Upload Gambar Referensi
+uploaded_file = st.file_uploader(
+    "Unggah Gambar (JPG/PNG)", type=["jpg", "jpeg", "png"]
+)
+
+# Inisialisasi background gambar jika ada
+bg_image = None
+if uploaded_file is not None:
+  image = Image.open(uploaded_file)
+  bg_image = image
+  st.sidebar.success("Gambar berhasil dimuat!")
+
+# Tentukan ukuran kanvas
+canvas_width = 700
+canvas_height = 500
+
+st.subheader("🎨 Kanvas Interaktif Komponen Sepatu")
+st.write(
+    "Gunakan *mouse* atau sentuhan untuk menggambar atau menyeleksi pola di atas"
+    " area kerja berikut:"
+)
+
+# Buat komponen st_canvas
+canvas_result = st_canvas(
+    fill_color="rgba(255, 165, 0, 0.3)",  # Warna transparan di dalam bentuk
+    stroke_width=stroke_width,
+    stroke_color=stroke_color,
+    background_color=bg_color,
+    background_image=bg_image,
+    update_streamlit=True,
+    height=canvas_height,
+    width=canvas_width,
+    drawing_mode=drawing_mode,
+    point_radius=5,
+    key="canvas_sepatu",
+)
+
+# Analisis hasil gambar di kanvas jika ada objek yang dibuat
+if canvas_result.json_data is not None:
+  objects = canvas_result.json_data.get("objects", [])
+  if len(objects) > 0:
+    st.markdown("---")
+    st.subheader("📊 Analisis Objek & Estimasi")
+    st.info(
+        f"Jumlah objek/pola yang digambar pada kanvas: **{len(objects)}**"
+    )
+
+    # Contoh perhitungan sederhana berbasis luasan/panjang objek pada kanvas
+    total_area_pixel = 0
+    for idx, obj in enumerate(objects):
+      obj_type = obj.get("type")
+      # Perkiraan kasar ekstraksi dimensi berdasarkan tipe bentuk
+      if obj_type == "rect":
+        w = obj.get("width", 0) * obj.get("scaleX", 1)
+        h = obj.get("height", 0) * obj.get("scaleY", 1)
+        area = w * h
+        total_area_pixel += area
+        st.write(
+            f"- **Objek {idx+1} (Kotak/Persegi):** Lebar {w:.1f}px, Tinggi"
+            f" {h:.1f}px (Estimasi Luas: {area:.1f} px²)"
+        )
+      elif obj_type == "circle":
+        r = (
+            obj.get("radius", 0)
+            * max(obj.get("scaleX", 1), obj.get("scaleY", 1))
+        )
+        area = 3.1416 * (r**2)
+        total_area_pixel += area
+        st.write(
+            f"- **Objek {idx+1} (Lingkaran):** Jari-jari {r:.1f}px (Estimasi"
+            f" Luas: {area:.1f} px²)"
+        )
+      else:
+        st.write(f"- **Objek {idx+1} ({obj_type})** berhasil direkam.")
+
+    # Simulasi perhitungan material/labor cost sederhana
+    if total_area_pixel > 0:
+      st.markdown("#### 💡 Simulasi Perhitungan Biaya / Yield")
+      factor_konversi = 0.05  # Angka asumsi faktor konversi standar pabrik
+      estimasi_biaya = total_area_pixel * factor_konversi
+      st.success(
+          f"Perkiraan Indikasi Biaya / Konsumsi Berdasarkan Luas Seleksi: **Rp"
+          f" {estimasi_biaya:,.2f}**"
+      )
+  else:
+    st.info(
+        "💡 *Tips:* Mulai gambar atau tandai suatu area di kanvas di atas untuk"
+        " melihat hasil kalkulasi otomatis."
+    )
     page_title="Footwear Material Yield Visualizer",
     page_icon="📐",
     layout="wide"
