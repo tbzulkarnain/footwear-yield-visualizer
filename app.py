@@ -6,8 +6,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("⚡ Footwear Material Yield Visualizer (Auto-Collision Safety)")
-st.caption("3-Component Master Fine-Tuning + Full Sheet Grid Replication Non-Overlapping")
+st.title("⚡ Footwear Material Yield Visualizer (Exact Preview Match)")
+st.caption("Duplikasi Rapat & Presisi 100% Mengikuti Preview 3 Komponen")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -126,7 +126,7 @@ if uploaded_file is not None:
             with c3_3:
                 r2_shift_y = st.slider("Geser Y Pcs 3", -float(bh*2), float(bh*2), 6.1, step=0.1)
 
-        # BENTUK POLYGON DARI SLIDER
+        # GEOMETRI KANVAS SLIDER
         p1_rot = rotate(base_poly, rot1, origin='center')
         p1_poly = translate(p1_rot, xoff=shift_x1, yoff=shift_y1)
 
@@ -136,7 +136,7 @@ if uploaded_file is not None:
         p3_rot = rotate(base_poly, rot3, origin='center')
         p3_poly = translate(p3_rot, xoff=r2_shift_x, yoff=r2_shift_y)
 
-        # PREVIEW CANVAS NORMALIZATION
+        # NORMALISASI CANVAS PREVIEW
         min_canvas_x = min(p1_poly.bounds[0], p2_poly.bounds[0], p3_poly.bounds[0])
         min_canvas_y = min(p1_poly.bounds[1], p2_poly.bounds[1], p3_poly.bounds[1])
 
@@ -145,7 +145,7 @@ if uploaded_file is not None:
         p2_preview = translate(p2_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
         p3_preview = translate(p3_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
 
-        # CHECK TABRAKAN PREVIEW
+        # TABRAKAN PREVIEW
         u1_b = p1_preview.buffer(inter_gap / 2)
         u2_b = p2_preview.buffer(inter_gap / 2)
         u3_b = p3_preview.buffer(inter_gap / 2)
@@ -167,7 +167,7 @@ if uploaded_file is not None:
             svg_3pcs = generate_svg_3pcs_preview(p1_preview, p2_preview, p3_preview, width_cm=max(pw, 25), height_cm=max(ph, 25))
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
-        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH ---
+        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH (EXACT PREVIEW) ---
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -179,7 +179,7 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # Normalisasi Blok Pair (Biru + Merah) ke titik Origin (0,0)
+            # Normalisasi Blok Pasangan ke Origin (0,0)
             base_x0 = min(p1_poly.bounds[0], p2_poly.bounds[0])
             base_y0 = min(p1_poly.bounds[1], p2_poly.bounds[1])
 
@@ -187,26 +187,22 @@ if uploaded_file is not None:
             p2_m = translate(p2_poly, xoff=-base_x0, yoff=-base_y0)
             p3_m = translate(p3_poly, xoff=-base_x0, yoff=-base_y0)
 
-            # Hitung Jarak Horizontal (Step X) & Jarak Vertikal (Step Y) murni
+            # Pitch Horisontal & Vektor Baris Murni dari Komponen 3
             pair_width = max(p1_m.bounds[2], p2_m.bounds[2]) - min(p1_m.bounds[0], p2_m.bounds[0])
             step_x = pair_width + inter_gap
 
             row_off_x = p3_m.bounds[0] - p1_m.bounds[0]
             row_off_y = p3_m.bounds[1] - p1_m.bounds[1]
 
-            # Kunci Safety Pitch Vertikal Minimum (Mencegah Merah menindih Biru baris bawah)
-            max_pair_h = max(p1_m.bounds[3], p2_m.bounds[3]) - min(p1_m.bounds[1], p2_m.bounds[1])
-            safe_row_step_y = max(row_off_y, max_pair_h * 0.5)
-
             placed_buffers = []
 
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
                 
-                row_y = margin + (row_idx * safe_row_step_y)
+                # Menggunakan Murni Koordinat Y dari Komponen 3
+                row_y = margin + (row_idx * row_off_y)
                 x_shift = row_off_x if is_row_even else 0.0
 
-                # Jika batas Y melebihi bahan, break
                 if row_y + min(p1_m.bounds[3], p2_m.bounds[3]) > (sheet_length - margin):
                     break
 
@@ -216,35 +212,29 @@ if uploaded_file is not None:
                     curr_x += step_x
 
                 while item_idx < total_items and (curr_x + pair_width) <= (sheet_width - margin):
-                    # Pasang Komponen 1 (Biru)
                     cand_p1 = translate(p1_m, xoff=curr_x, yoff=row_y)
+                    cand_p2 = translate(p2_m, xoff=curr_x, yoff=row_y)
+
                     cand_buf1 = cand_p1.buffer(inter_gap / 2)
+                    cand_buf2 = cand_p2.buffer(inter_gap / 2)
 
-                    # Validasi Margin Sheet
                     p1_inside = (cand_p1.bounds[2] <= sheet_width - margin) and (cand_p1.bounds[3] <= sheet_length - margin) and (cand_p1.bounds[0] >= margin)
-                    
-                    # Validasi Collision dengan Komponen Lain
-                    p1_has_collision = any(cand_buf1.intersects(b) for b in placed_buffers)
+                    p2_inside = (cand_p2.bounds[2] <= sheet_width - margin) and (cand_p2.bounds[3] <= sheet_length - margin) and (cand_p2.bounds[0] >= margin)
 
-                    if p1_inside and not p1_has_collision:
+                    p1_col = any(cand_buf1.intersects(b) for b in placed_buffers)
+                    p2_col = any(cand_buf2.intersects(b) for b in placed_buffers)
+
+                    if p1_inside and not p1_col:
                         placed_polygons.append((cand_p1, 0))
                         placed_buffers.append(cand_buf1)
                         total_pattern_area += cand_p1.area
                         item_idx += 1
 
-                    # Pasang Komponen 2 (Merah)
-                    if item_idx < total_items:
-                        cand_p2 = translate(p2_m, xoff=curr_x, yoff=row_y)
-                        cand_buf2 = cand_p2.buffer(inter_gap / 2)
-
-                        p2_inside = (cand_p2.bounds[2] <= sheet_width - margin) and (cand_p2.bounds[3] <= sheet_length - margin) and (cand_p2.bounds[0] >= margin)
-                        p2_has_collision = any(cand_buf2.intersects(b) for b in placed_buffers)
-
-                        if p2_inside and not p2_has_collision:
-                            placed_polygons.append((cand_p2, 1))
-                            placed_buffers.append(cand_buf2)
-                            total_pattern_area += cand_p2.area
-                            item_idx += 1
+                    if item_idx < total_items and p2_inside and not p2_col:
+                        placed_polygons.append((cand_p2, 1))
+                        placed_buffers.append(cand_buf2)
+                        total_pattern_area += cand_p2.area
+                        item_idx += 1
 
                     curr_x += step_x
 
