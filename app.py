@@ -17,7 +17,7 @@ st.markdown("---")
 # TAHAP 1: SETUP PARAMETER UTAMA DI HALAMAN UTAMA (COMPACT GRID)
 # ============================================================
 
-st.subheader("📋 Material & Target Setup")
+st.subheader("📋 Material Setup")
 col_p1, col_p1_unit, col_p2, col_p3, col_p4 = st.columns([1.5, 1, 1.2, 1.2, 1.2])
 
 with col_p1:
@@ -123,7 +123,7 @@ if uploaded_file is not None:
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
         st.markdown("---")
-        st.subheader("🛠️ Layout Configuration & Fine-Tuning")
+        st.subheader("🛠️ Layout Configuration")
 
         col_ctrl, col_prev = st.columns([1.1, 0.9])
 
