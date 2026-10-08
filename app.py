@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (True Contour-Based Grid)")
-st.caption("Penataan Jarak Antar Kontur Poligon Asli (Tanpa Batas Kotak Implisit)")
+st.title("⚡ Footwear Material Yield Visualizer (Precision Contour Grid)")
+st.caption("Penataan Jarak Kontur Rapat Tanpa Tabrakan")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -145,7 +145,7 @@ if uploaded_file is not None:
             else:
                 pair_offset_x = 0.0
 
-        # HITUNG GEOMETRI P1 & P2 DAN NORMALISASI POSISI KE (0,0)
+        # HITUNG GEOMETRI P1 & P2 DAN NORMALISASI KE (0,0)
         p1_rot = rotate(base_poly, rot_p1, origin='center')
         minx1, miny1, _, _ = p1_rot.bounds
         p1 = translate(p1_rot, xoff=-minx1, yoff=-miny1)
@@ -173,7 +173,7 @@ if uploaded_file is not None:
             svg_preview = generate_svg_preview_pair(p1, p2, width_cm=max(prev_w, 25), height_cm=max(prev_h, 20), show_p2=(is_pair_cat or is_twoway_cat))
             st.components.v1.html(svg_preview, height=280, scrolling=False)
 
-        # STEP 2: DUPLIKASI DENGAN PERHITUNGAN KONTUR PRESISI
+        # STEP 2: DUPLIKASI BERDASARKAN KONTUR PRESISI
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -185,9 +185,10 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # Lebar & Tinggi Aktual dari Bound Kontur Murni ditambah Gap Kontur
             p1_w = p1.bounds[2] - p1.bounds[0]
             p1_h = p1.bounds[3] - p1.bounds[1]
+            p2_w = p2.bounds[2] - p2.bounds[0]
+            p2_h = p2.bounds[3] - p2.bounds[1]
 
             if "Category 1" in category:
                 step_x = p1_w + inter_gap_cm
@@ -209,26 +210,27 @@ if uploaded_file is not None:
                     row_idx += 1
 
             elif "Category 2" in category:
-                # Untuk Interlock 2 Way, perhitungkan lebar gabungan efisien
-                w_unit = max(p1.bounds[2], p2.bounds[2]) - min(p1.bounds[0], p2.bounds[0])
-                h_unit = max(p1.bounds[3], p2.bounds[3]) - min(p1.bounds[1], p2.bounds[1])
-                step_x = (w_unit / 2) + inter_gap_cm  # Langkah rapat bergantian
-                pitch_y = h_unit + inter_gap_cm
+                # Two Way Interlock: Selang-seling P1 dan P2 dengan lebar masing-masing
+                avg_w = (p1_w + p2_w) / 2
+                step_x = avg_w + inter_gap_cm
+                pitch_y = max(p1_h, p2_h) + inter_gap_cm
 
                 while item_idx < total_items:
                     row_y = margin + (row_idx * pitch_y)
-                    if row_y + h_unit > (sheet_length - margin):
+                    if row_y + max(p1_h, p2_h) > (sheet_length - margin):
                         break
                     
                     curr_x = margin
                     col_idx = 0
-                    while item_idx < total_items and (curr_x + p1_w) <= (sheet_width - margin):
+                    while item_idx < total_items and curr_x <= (sheet_width - margin):
                         p_curr = p1 if col_idx % 2 == 0 else p2
                         color_idx = 0 if col_idx % 2 == 0 else 1
                         cand = translate(p_curr, xoff=curr_x, yoff=row_y)
-                        placed_polygons.append((cand, color_idx))
-                        total_pattern_area += cand.area
-                        item_idx += 1
+                        
+                        if curr_x >= margin and (curr_x + (p1_w if col_idx % 2 == 0 else p2_w)) <= (sheet_width - margin):
+                            placed_polygons.append((cand, color_idx))
+                            total_pattern_area += cand.area
+                            item_idx += 1
                         curr_x += step_x
                         col_idx += 1
 
@@ -261,16 +263,15 @@ if uploaded_file is not None:
                     row_idx += 1
 
             elif "Category 4" in category:
-                w_unit = max(p1.bounds[2], p2.bounds[2]) - min(p1.bounds[0], p2.bounds[0])
-                h_unit = max(p1.bounds[3], p2.bounds[3]) - min(p1.bounds[1], p2.bounds[1])
-                step_x = (w_unit / 2) + inter_gap_cm
-                pitch_y = h_unit + inter_gap_cm
+                avg_w = (p1_w + p2_w) / 2
+                step_x = avg_w + inter_gap_cm
+                pitch_y = max(p1_h, p2_h) + inter_gap_cm
                 stagger_x = step_x / 2
 
                 while item_idx < total_items:
                     is_row_even = (row_idx % 2 == 1)
                     row_y = margin + (row_idx * pitch_y)
-                    if row_y + h_unit > (sheet_length - margin):
+                    if row_y + max(p1_h, p2_h) > (sheet_length - margin):
                         break
                     
                     row_start_x = margin + (stagger_x if is_row_even else 0.0)
@@ -280,10 +281,11 @@ if uploaded_file is not None:
                     curr_x = row_start_x
                     col_idx = 0
                     while item_idx < total_items and curr_x <= (sheet_width - margin):
-                        if curr_x >= margin and (curr_x + p1_w) <= (sheet_width - margin):
-                            p_curr = p1 if col_idx % 2 == 0 else p2
-                            color_idx = 0 if col_idx % 2 == 0 else 1
-                            cand = translate(p_curr, xoff=curr_x, yoff=row_y)
+                        p_curr = p1 if col_idx % 2 == 0 else p2
+                        color_idx = 0 if col_idx % 2 == 0 else 1
+                        cand = translate(p_curr, xoff=curr_x, yoff=row_y)
+                        
+                        if curr_x >= margin and (curr_x + (p1_w if col_idx % 2 == 0 else p2_w)) <= (sheet_width - margin):
                             placed_polygons.append((cand, color_idx))
                             total_pattern_area += cand.area
                             item_idx += 1
