@@ -10,14 +10,12 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (ProCost Grid Standard)")
-st.caption("Penataan ProCost Otomatis dengan Interlock Rapat & Margin Potong Presisi")
+st.title("⚡ Footwear Material Yield Visualizer (ProCost Precision Grid)")
+st.caption("Penataan Matriks Rapat dengan Pengaturan Gap/Celah Komponen Presisi (mm)")
 
 # ============================================================
 # SIDEBAR PARAMETER
 # ============================================================
-
-st.sidebar.header("⚙️ Parameter Lembaran Material")
 
 sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value=140.0, step=5.0)
 sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
@@ -108,7 +106,7 @@ if uploaded_file is not None:
 
         # STEP 1: ATUR POSISI & PILIH KATEGORI
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Atur Rotasi & Input Distance Allowance (mm)")
+        st.subheader("🛠️ Step 1: Atur Rotasi, Kategori & Gap Antar Komponen (mm)")
 
         col_ctrl, col_prev = st.columns([1.1, 0.9])
 
@@ -137,35 +135,26 @@ if uploaded_file is not None:
             else:
                 rot_p2 = rot_p1
 
-            st.markdown("##### 📏 Parameter Celah Potong (Allowance mm)")
-            c_gap1, c_gap2 = st.columns(2)
-            with c_gap1:
-                inter_gap_mm = st.number_input("Celah Pisau Antar-Pola (mm)", min_value=0.0, max_value=20.0, value=2.0, step=0.5)
-            with c_gap2:
-                pair_shift_x_mm = st.number_input("Geser Pasangan Merah X (mm)", min_value=-50.0, max_value=50.0, value=0.0, step=0.5)
+            st.markdown("##### 📏 Pengaturan Celah / Gap Potong")
+            gap_mm = st.number_input("Gap Antar Komponen / Pisau (mm)", min_value=0.0, max_value=10.0, value=2.0, step=0.5)
 
+            st.markdown("##### 📐 Penyesuaian Jarak Interlock")
             c_dist1, c_dist2 = st.columns(2)
             with c_dist1:
-                step_x_allowance_mm = st.number_input("Celah Antar-Pasangan Horiz. X (mm)", min_value=-50.0, max_value=50.0, value=2.0, step=0.5)
+                pair_offset_x = st.slider("Jarak Rapat Pasangan X (cm)", 0.0, float(bw), float(bw * 0.4), step=0.1)
             with c_dist2:
-                pitch_y_allowance_mm = st.number_input("Celah Antar-Baris Vert. Y (mm)", min_value=-50.0, max_value=50.0, value=2.0, step=0.5)
+                row_spacing_y = st.slider("Jarak Antar Baris Y (cm)", 0.1, float(bh), float(bh * 0.7), step=0.1)
 
-        # KONVERSI MM KE CM
-        inter_gap_cm = inter_gap_mm / 10.0
-        pair_shift_x_cm = pair_shift_x_mm / 10.0
-        step_x_allowance_cm = step_x_allowance_mm / 10.0
-        pitch_y_allowance_cm = pitch_y_allowance_mm / 10.0
+        # KONVERSI GAP MM KE CM
+        gap_cm = gap_mm / 10.0
 
-        # GEOMETRI P1 & P2 DENGAN INTERLOCK DASAR
+        # GEOMETRI P1 & P2
         p1 = rotate(base_poly, rot_p1, origin='center')
         p1 = translate(p1, xoff=-p1.bounds[0], yoff=-p1.bounds[1])
 
         p2 = rotate(base_poly, rot_p2, origin='center')
         p2 = translate(p2, xoff=-p2.bounds[0], yoff=-p2.bounds[1])
-        
-        # Posisi P2 dasar diselipkan (45% lebar) ditambah offset mm
-        base_p2_x = (p1.bounds[2] * 0.45) + pair_shift_x_cm
-        p2 = translate(p2, xoff=base_p2_x, yoff=0.0)
+        p2 = translate(p2, xoff=pair_offset_x, yoff=0.0)
 
         # PREVIEW MASTER PASANGAN
         prev_w = max(p1.bounds[2], p2.bounds[2]) + 5.0
@@ -173,12 +162,6 @@ if uploaded_file is not None:
 
         with col_prev:
             st.markdown("##### 👁️ Preview Master Layout")
-            if is_pair_cat or is_twoway_cat:
-                if p1.buffer(inter_gap_cm/2).intersects(p2.buffer(inter_gap_cm/2)):
-                    st.error("⚠️ Pasangan bertabrakan! Tambahkan nilai 'Geser Pasangan Merah X (mm)'.")
-                else:
-                    st.success("✅ Jarak Pasangan Aman (Bebas Tabrakan)")
-
             svg_preview = generate_svg_preview_pair(p1, p2, width_cm=max(prev_w, 25), height_cm=max(prev_h, 20), show_p2=(is_pair_cat or is_twoway_cat))
             st.components.v1.html(svg_preview, height=280, scrolling=False)
 
@@ -194,23 +177,15 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # POSISI PITCH RAPAT BERDASARKAN PROCOST
-            if is_pair_cat or is_twoway_cat:
-                pair_width = (max(p1.bounds[2], p2.bounds[2]) * 0.85)
-                pair_height = (max(p1.bounds[3], p2.bounds[3]) * 0.75)
-            else:
-                pair_width = p1.bounds[2]
-                pair_height = p1.bounds[3]
-
-            step_x = pair_width + inter_gap_cm + step_x_allowance_cm
-            pitch_y = pair_height + inter_gap_cm + pitch_y_allowance_cm
+            step_x = max(p1.bounds[2], p2.bounds[2]) + gap_cm
+            pitch_y = bh * row_spacing_y + gap_cm
             stagger_x = (step_x / 2) if ("Staggered" in category or "Category 3" in category or "Category 4" in category or "Category 6" in category) else 0.0
 
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
                 row_y = margin_cm + (row_idx * pitch_y)
 
-                if row_y + p1.bounds[3] > (sheet_length - margin_cm):
+                if row_y + bh > (sheet_length - margin_cm):
                     break
 
                 x_shift = stagger_x if is_row_even else 0.0
