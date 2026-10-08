@@ -6,8 +6,8 @@ from shapely.affinity import translate, rotate
 
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
-st.title("⚡ Footwear Material Yield Visualizer (Exact Preview Match)")
-st.caption("Duplikasi Rapat & Presisi 100% Mengikuti Preview 3 Komponen")
+st.title("⚡ Footwear Material Yield Visualizer (Exact Grid Repeat)")
+st.caption("3-Component Preview -> Duplikasi Matriks Pasangan Utuh Presisi")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -126,7 +126,7 @@ if uploaded_file is not None:
             with c3_3:
                 r2_shift_y = st.slider("Geser Y Pcs 3", -float(bh*2), float(bh*2), 6.1, step=0.1)
 
-        # GEOMETRI KANVAS SLIDER
+        # BENTUK POLYGON SESUAI SLIDER
         p1_rot = rotate(base_poly, rot1, origin='center')
         p1_poly = translate(p1_rot, xoff=shift_x1, yoff=shift_y1)
 
@@ -136,7 +136,7 @@ if uploaded_file is not None:
         p3_rot = rotate(base_poly, rot3, origin='center')
         p3_poly = translate(p3_rot, xoff=r2_shift_x, yoff=r2_shift_y)
 
-        # NORMALISASI CANVAS PREVIEW
+        # NORMALISASI PREVIEW
         min_canvas_x = min(p1_poly.bounds[0], p2_poly.bounds[0], p3_poly.bounds[0])
         min_canvas_y = min(p1_poly.bounds[1], p2_poly.bounds[1], p3_poly.bounds[1])
 
@@ -145,7 +145,7 @@ if uploaded_file is not None:
         p2_preview = translate(p2_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
         p3_preview = translate(p3_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
 
-        # TABRAKAN PREVIEW
+        # DETEKSI BENTURAN PREVIEW
         u1_b = p1_preview.buffer(inter_gap / 2)
         u2_b = p2_preview.buffer(inter_gap / 2)
         u3_b = p3_preview.buffer(inter_gap / 2)
@@ -157,7 +157,7 @@ if uploaded_file is not None:
         with col_prev:
             st.markdown("### 👁️ Preview Master (3 Komponen)")
             if collide_12 or collide_13 or collide_23:
-                st.error("⚠️ Terdapat Komponen yang Bertabrakan! Adjust slider sampai posisi hijau/aman.")
+                st.error("⚠️ Terdapat Komponen yang Bertabrakan! Adjust slider sampai posisi aman.")
             else:
                 st.success("✅ 3 Komponen Bebas Tabrakan (Layout Safe)")
 
@@ -167,7 +167,7 @@ if uploaded_file is not None:
             svg_3pcs = generate_svg_3pcs_preview(p1_preview, p2_preview, p3_preview, width_cm=max(pw, 25), height_cm=max(ph, 25))
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
-        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH (EXACT PREVIEW) ---
+        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH ---
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -179,7 +179,7 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # Normalisasi Blok Pasangan ke Origin (0,0)
+            # Normalisasi Komponen 1 & 2 ke Titik (0,0)
             base_x0 = min(p1_poly.bounds[0], p2_poly.bounds[0])
             base_y0 = min(p1_poly.bounds[1], p2_poly.bounds[1])
 
@@ -187,19 +187,16 @@ if uploaded_file is not None:
             p2_m = translate(p2_poly, xoff=-base_x0, yoff=-base_y0)
             p3_m = translate(p3_poly, xoff=-base_x0, yoff=-base_y0)
 
-            # Pitch Horisontal & Vektor Baris Murni dari Komponen 3
+            # Hitung Lebar Pasangan & Offset Baris Murni
             pair_width = max(p1_m.bounds[2], p2_m.bounds[2]) - min(p1_m.bounds[0], p2_m.bounds[0])
             step_x = pair_width + inter_gap
 
             row_off_x = p3_m.bounds[0] - p1_m.bounds[0]
             row_off_y = p3_m.bounds[1] - p1_m.bounds[1]
 
-            placed_buffers = []
-
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
                 
-                # Menggunakan Murni Koordinat Y dari Komponen 3
                 row_y = margin + (row_idx * row_off_y)
                 x_shift = row_off_x if is_row_even else 0.0
 
@@ -208,32 +205,25 @@ if uploaded_file is not None:
 
                 curr_x = margin + x_shift
 
+                # Kembalikan posisi x jika melebihi margin kiri
                 while curr_x < margin:
                     curr_x += step_x
 
                 while item_idx < total_items and (curr_x + pair_width) <= (sheet_width - margin):
-                    cand_p1 = translate(p1_m, xoff=curr_x, yoff=row_y)
-                    cand_p2 = translate(p2_m, xoff=curr_x, yoff=row_y)
+                    p1 = translate(p1_m, xoff=curr_x, yoff=row_y)
+                    p2 = translate(p2_m, xoff=curr_x, yoff=row_y)
 
-                    cand_buf1 = cand_p1.buffer(inter_gap / 2)
-                    cand_buf2 = cand_p2.buffer(inter_gap / 2)
+                    p1_valid = (p1.bounds[2] <= sheet_width - margin) and (p1.bounds[3] <= sheet_length - margin) and (p1.bounds[0] >= margin)
+                    p2_valid = (p2.bounds[2] <= sheet_width - margin) and (p2.bounds[3] <= sheet_length - margin) and (p2.bounds[0] >= margin)
 
-                    p1_inside = (cand_p1.bounds[2] <= sheet_width - margin) and (cand_p1.bounds[3] <= sheet_length - margin) and (cand_p1.bounds[0] >= margin)
-                    p2_inside = (cand_p2.bounds[2] <= sheet_width - margin) and (cand_p2.bounds[3] <= sheet_length - margin) and (cand_p2.bounds[0] >= margin)
-
-                    p1_col = any(cand_buf1.intersects(b) for b in placed_buffers)
-                    p2_col = any(cand_buf2.intersects(b) for b in placed_buffers)
-
-                    if p1_inside and not p1_col:
-                        placed_polygons.append((cand_p1, 0))
-                        placed_buffers.append(cand_buf1)
-                        total_pattern_area += cand_p1.area
+                    if p1_valid:
+                        placed_polygons.append((p1, 0))
+                        total_pattern_area += p1.area
                         item_idx += 1
 
-                    if item_idx < total_items and p2_inside and not p2_col:
-                        placed_polygons.append((cand_p2, 1))
-                        placed_buffers.append(cand_buf2)
-                        total_pattern_area += cand_p2.area
+                    if item_idx < total_items and p2_valid:
+                        placed_polygons.append((p2, 1))
+                        total_pattern_area += p2.area
                         item_idx += 1
 
                     curr_x += step_x
