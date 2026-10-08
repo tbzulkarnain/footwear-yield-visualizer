@@ -188,30 +188,28 @@ if uploaded_file is not None:
             svg_3pcs = generate_svg_3pcs_preview(p1_preview, p2_preview, p3_preview, width_cm=max(pw, 25), height_cm=max(ph, 25))
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
-        # STEP 2: FULL SHEET DUPLICATION LOGIC
+        # STEP 2: FULL SHEET DUPLICATION LOGIC (FIXED BOUNDING BOX & PITCH)
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
         if st.button("📊 Render Full Sheet Layout", type="primary"):
 
-            # P1 = Biru, P2 = Merah (Baris 1), P3 = Merah Awal Baris 2
-            # Normalisasi ke titik Origin (0,0)
-            base_x0 = p1_poly.bounds[0]
-            base_y0 = p1_poly.bounds[1]
+            # 1. Kunci Pasangan Master P1 (Biru) & P2 (Merah) di Titik Nol (0,0)
+            pair_min_x = min(p1_poly.bounds[0], p2_poly.bounds[0])
+            pair_min_y = min(p1_poly.bounds[1], p2_poly.bounds[1])
 
-            blue_master = translate(p1_poly, xoff=-base_x0, yoff=-base_y0)
-            red_master1 = translate(p2_poly, xoff=-base_x0, yoff=-base_y0)
-            red_master2 = translate(p3_poly, xoff=-base_x0, yoff=-base_y0)
+            blue_master = translate(p1_poly, xoff=-pair_min_x, yoff=-pair_min_y)
+            red_master = translate(p2_poly, xoff=-pair_min_x, yoff=-pair_min_y)
 
-            # Jarak Horizontal antar komponen sejenis
-            step_x = (red_master2.bounds[0] - blue_master.bounds[0])
-            if step_x <= 0:
-                step_x = (blue_master.bounds[2] - blue_master.bounds[0]) + inter_gap
+            # Lebar utuh 1 Blok Pasangan (Biru + Merah)
+            pair_width = max(p1_poly.bounds[2], p2_poly.bounds[2]) - pair_min_x
 
-            # Pitch Vertikal (jarak Y antar baris)
-            pitch_y = (red_master2.bounds[1] - red_master1.bounds[1])
-            if pitch_y <= 0:
-                pitch_y = (blue_master.bounds[3] - blue_master.bounds[0]) + inter_gap
+            # Step X = Lebar Pasangan + Gap (Mencegah Merah & Biru bertabrakan horizontal)
+            step_x = pair_width + inter_gap
+
+            # 2. Vektor Pergeseran Baris (Diambil Murni dari Komponen 3 / Hijau)
+            stagger_x = p3_poly.bounds[0] - p1_poly.bounds[0]
+            pitch_y = p3_poly.bounds[1] - p1_poly.bounds[1]
 
             placed_polygons = []
             total_pattern_area = 0.0
@@ -221,41 +219,43 @@ if uploaded_file is not None:
             row_idx = 0
 
             while item_idx < total_items:
-                # Geser Y untuk baris saat ini
                 row_y = margin + (row_idx * pitch_y)
 
-                # Jika batas Y melampaui lembaran, hentikan
-                if row_y + blue_master.bounds[1] > (sheet_length - margin):
+                # Jika Y melampaui batas lembaran, hentikan
+                if row_y + min(blue_master.bounds[3], red_master.bounds[3]) > (sheet_length - margin):
                     break
 
-                # Geser X selang-seling (stagger) berdasarkan baris
-                row_start_x = margin - (row_idx * (red_master1.bounds[0] - blue_master.bounds[0]))
+                # Geser X awal baris berdasarkan Stagger P3
+                row_start_x = margin + (row_idx * stagger_x)
 
-                # Tarik ke paling kiri batas margin untuk mengisi komponen yang muat di sebelah kiri
+                # Mundur/Maju ke kiri hingga batas margin terluar
                 while row_start_x > margin:
                     row_start_x -= step_x
-                while row_start_x + step_x < margin:
+                while row_start_x + pair_width < margin:
                     row_start_x += step_x
 
                 curr_x = row_start_x
 
                 while item_idx < total_items and curr_x <= (sheet_width - margin):
-                    # 1. Pasang Komponen Biru
                     p_blue = translate(blue_master, xoff=curr_x, yoff=row_y)
-                    if (p_blue.bounds[0] >= margin and p_blue.bounds[2] <= sheet_width - margin and 
-                        p_blue.bounds[1] >= margin and p_blue.bounds[3] <= sheet_length - margin):
+                    p_red = translate(red_master, xoff=curr_x, yoff=row_y)
+
+                    # Cek batas margin lembaran
+                    blue_in = (p_blue.bounds[0] >= margin and p_blue.bounds[2] <= sheet_width - margin and 
+                               p_blue.bounds[1] >= margin and p_blue.bounds[3] <= sheet_length - margin)
+                    
+                    red_in = (p_red.bounds[0] >= margin and p_red.bounds[2] <= sheet_width - margin and 
+                              p_red.bounds[1] >= margin and p_red.bounds[3] <= sheet_length - margin)
+
+                    if blue_in:
                         placed_polygons.append((p_blue, 0))
                         total_pattern_area += p_blue.area
                         item_idx += 1
 
-                    # 2. Pasang Komponen Merah
-                    if item_idx < total_items:
-                        p_red = translate(red_master1, xoff=curr_x, yoff=row_y)
-                        if (p_red.bounds[0] >= margin and p_red.bounds[2] <= sheet_width - margin and 
-                            p_red.bounds[1] >= margin and p_red.bounds[3] <= sheet_length - margin):
-                            placed_polygons.append((p_red, 1))
-                            total_pattern_area += p_red.area
-                            item_idx += 1
+                    if item_idx < total_items and red_in:
+                        placed_polygons.append((p_red, 1))
+                        total_pattern_area += p_red.area
+                        item_idx += 1
 
                     curr_x += step_x
 
