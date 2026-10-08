@@ -311,7 +311,7 @@ if uploaded_file is not None:
                     row_idx += 1
 
             # ============================================================
-            # PERHITUNGAN STANDAR PROCOST (PER PAIR) DENGAN PRESISI TINGGI
+            # PERHITUNGAN STANDAR PROCOST DENGAN KOREKSI YIELD
             # ============================================================
             pieces_completed = len(placed_polygons)
             pairs_completed = max(pieces_completed // 2, 1)
@@ -320,21 +320,24 @@ if uploaded_file is not None:
             single_net_area = base_poly.area
             net_area_per_pair = single_net_area * 2.0
 
-            # Panjang bahan terpakai aktual (cm) - Mengambil batas koordinat Y terjauh secara presisi
+            # Panjang bahan terpakai aktual (cm)
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else sheet_length
             
-            # Gross Area per Pair (cm²) -> (Lebar Sheet * Panjang Terpakai Presisi) / Total Pasang
+            # Gross Area per Pair (cm²)
             used_sheet_area = sheet_width * max_used_y
             gross_area_per_pair = used_sheet_area / pairs_completed
 
-            # Waste Area per Pair (cm²) -> Gross Area - Net Area
+            # Waste Area per Pair (cm²)
             waste_area_per_pair = gross_area_per_pair - net_area_per_pair
 
-            # Efficiency (%) -> (Net Area / Gross Area) * 100
+            # Efficiency (%)
             efficiency = (net_area_per_pair / gross_area_per_pair) * 100 if gross_area_per_pair > 0 else 0.0
 
-            # Yield (per unit length) -> Pairs per cm (atau satuan unit panjang standar ProCost)
-            procost_yield = pairs_completed / max_used_y if max_used_y > 0 else 0.0
+            # KOREKSI RUMUS YIELD PROCOST:
+            # Yield (per unit length, misal per 100 cm / per meter panjang bahan)
+            # Rumus ProCost standar: Pairs / Panjang Bahan (dalam satuan meter atau unit standar)
+            used_length_m = max_used_y / 100.0  # Konversi cm ke meter
+            procost_yield = pairs_completed / used_length_m if used_length_m > 0 else 0.0
 
             # TAMPILAN TABEL/METRIK ALA PROCOST
             st.markdown("### 📊 ProCost Summary Table")
@@ -345,9 +348,8 @@ if uploaded_file is not None:
             col_m3.metric("Gross Area / pair", f"{gross_area_per_pair:.4f} cm²")
             col_m4.metric("Waste Area / pair", f"{waste_area_per_pair:.4f} cm²")
             col_m5.metric("Efficiency (%)", f"{efficiency:.2f} %")
-            col_m6.metric("Yield (per unit)", f"{procost_yield:.4f}")
+            col_m6.metric("Yield (per meter)", f"{procost_yield:.4f}")
 
-            # Menggunakan format desimal presisi (2 angka di belakang koma) untuk panjang terpakai
             st.info(f"💡 **Info Produksi:** Terpasang {pairs_completed} pasang ({pieces_completed} pcs) | Panjang Terpakai: **{max_used_y:.2f} cm** dari {sheet_length:.1f} cm")
 
             # RENDER SVG FULL SHEET
