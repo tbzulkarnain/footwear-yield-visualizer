@@ -79,8 +79,8 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
 
 
 def generate_svg_preview_grid(items_with_color, width_cm=45, height_cm=30):
-    # Skala diset kecil (1.2) agar gambar preview pas dan tidak kepotong
-    scale = 1.2
+    # Skala diperbesar (8.0) agar tampilan preview jelas, dengan stroke tipis proporsional
+    scale = 8.0
     svg_w = width_cm * scale
     svg_h = height_cm * scale
 
@@ -89,9 +89,9 @@ def generate_svg_preview_grid(items_with_color, width_cm=45, height_cm=30):
     color_map = {0: '#3388ff', 1: '#ff4444'} # 0 = Biru, 1 = Merah
     for poly, color_idx in items_with_color:
         pts = list(poly.exterior.coords)
-        pts_str = " ".join([f"{p[0] * scale:.1f},{p[1] * scale:.1f}" for p in pts])
+        pts_str = " ".join([f"{p[0] * scale:.2f},{p[1] * scale:.2f}" for p in pts])
         col = color_map.get(color_idx % 2, '#3388ff')
-        svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="0.8" opacity="0.85"/>'
+        svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="0.5" opacity="0.85"/>'
 
     svg_code += "</svg>"
     return svg_code
@@ -211,7 +211,7 @@ if uploaded_file is not None:
             st.markdown("##### 👁️ Live Preview Grid (2 Baris)")
             st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.1f} cm | Pitch Y: {pitch_y:.1f} cm")
             svg_preview = generate_svg_preview_grid(preview_items, width_cm=45, height_cm=30)
-            st.components.v1.html(svg_preview, height=220, scrolling=False)
+            st.components.v1.html(svg_preview, height=270, scrolling=False)
 
         # ============================================================
         # TAHAP 2: RENDER HASIL PENUH KE LEMBARAN BAHAN
@@ -334,8 +334,8 @@ if uploaded_file is not None:
 
             st.info(f"💡 **Consumption Rate:** {consumption_per_pcs:.4f} m² / pcs | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
-            # RENDER SVG FULL SHEET (Skala diset ke 1.2 agar seluruh lembaran bahan tampil kecil utuh dan tidak terpotong di layar)
-            scale_f = 1.2
+            # RENDER SVG FULL SHEET (Skala besar 8.0 dengan ketebalan garis tipis presisi 0.4 agar bentuk komponen terlihat jelas dan rapi)
+            scale_f = 8.0
             svg_w_f = sheet_width * scale_f
             svg_h_f = sheet_length * scale_f
 
@@ -353,9 +353,9 @@ if uploaded_file is not None:
 
             for poly, idx in placed_polygons:
                 pts = list(poly.exterior.coords)
-                pts_str = " ".join([f"{p[0] * scale_f:.1f},{p[1] * scale_f:.1f}" for p in pts])
+                pts_str = " ".join([f"{p[0] * scale_f:.2f},{p[1] * scale_f:.2f}" for p in pts])
                 fill_col = '#3388ff' if idx % 2 == 0 else '#ff4444'
-                svg_full += f'<polygon points="{pts_str}" fill="{fill_col}" stroke="#111" stroke-width="0.8" opacity="0.85"/>'
+                svg_full += f'<polygon points="{pts_str}" fill="{fill_col}" stroke="#111" stroke-width="0.4" opacity="0.85"/>'
 
             svg_full += '</svg>'
-            st.components.v1.html(svg_full, height=400, scrolling=True)
+            st.components.v1.html(svg_full, height=650, scrolling=True)
