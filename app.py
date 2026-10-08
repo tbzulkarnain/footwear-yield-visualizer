@@ -79,7 +79,8 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
 
 
 def generate_svg_preview_grid(items_with_color, width_cm=45, height_cm=30):
-    scale = 10
+    # Skala diperkecil agar preview pas dan tidak terlalu besar
+    scale = 5.5
     svg_w = width_cm * scale
     svg_h = height_cm * scale
 
@@ -90,7 +91,7 @@ def generate_svg_preview_grid(items_with_color, width_cm=45, height_cm=30):
         pts = list(poly.exterior.coords)
         pts_str = " ".join([f"{p[0] * scale:.1f},{p[1] * scale:.1f}" for p in pts])
         col = color_map.get(color_idx % 2, '#3388ff')
-        svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="1.5" opacity="0.85"/>'
+        svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="1.2" opacity="0.85"/>'
 
     svg_code += "</svg>"
     return svg_code
@@ -113,7 +114,6 @@ if uploaded_file is not None:
         st.markdown("---")
         st.subheader("🛠️ Konfigurasi Tata Letak & Fine-tune Presisi")
 
-        # Layout 2 Kolom Utama (Kontrol di Kiri, Preview di Kanan)
         col_ctrl, col_prev = st.columns([1.1, 0.9])
 
         with col_ctrl:
@@ -140,7 +140,7 @@ if uploaded_file is not None:
                 else:
                     rot_p2 = rot_p1
 
-            st.markdown("##### 🎛️ Penyesuaian Spasi Grid (Number Input Presisi)")
+            st.markdown("##### 🎛️ Penyesuaian Spasi Grid")
             c_ft1, c_ft2 = st.columns(2)
             with c_ft1:
                 fine_tune_x = st.number_input("Jarak Kolom / Step X", value=0.0, step=0.1, format="%.2f")
@@ -205,12 +205,12 @@ if uploaded_file is not None:
             preview_items.append((translate(p1, xoff=row2_x1, yoff=row2_y), 0))
             preview_items.append((translate(p2, xoff=row2_x2, yoff=row2_y), 1))
 
-        # LIVE PREVIEW MASTER (2 BARIS) DI SISI KANAN
+        # LIVE PREVIEW MASTER (2 BARIS) DI SISI KANAN (Dikecilkan tingginya ke 200px)
         with col_prev:
             st.markdown("##### 👁️ Live Preview Grid (2 Baris)")
             st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.1f} cm | Pitch Y: {pitch_y:.1f} cm")
-            svg_preview = generate_svg_preview_grid(preview_items, width_cm=45, height_cm=30)
-            st.components.v1.html(svg_preview, height=270, scrolling=False)
+            svg_preview = generate_svg_preview_grid(preview_items, width_cm=45, height_cm=25)
+            st.components.v1.html(svg_preview, height=200, scrolling=False)
 
         # ============================================================
         # TAHAP 2: RENDER HASIL PENUH KE LEMBARAN BAHAN
@@ -333,8 +333,8 @@ if uploaded_file is not None:
 
             st.info(f"💡 **Consumption Rate:** {consumption_per_pcs:.4f} m² / pcs | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
 
-            # RENDER SVG FULL SHEET
-            scale_f = 8
+            # RENDER SVG FULL SHEET (Skala dikecilkan ke 5.0 dan tinggi komponen web disesuaikan ke 400px agar proporsional)
+            scale_f = 5.0
             svg_w_f = sheet_width * scale_f
             svg_h_f = sheet_length * scale_f
 
@@ -357,4 +357,4 @@ if uploaded_file is not None:
                 svg_full += f'<polygon points="{pts_str}" fill="{fill_col}" stroke="#111" stroke-width="0.8" opacity="0.85"/>'
 
             svg_full += '</svg>'
-            st.components.v1.html(svg_full, height=650, scrolling=True)
+            st.components.v1.html(svg_full, height=400, scrolling=True)
