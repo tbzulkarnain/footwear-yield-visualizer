@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 st.title("⚡ Footwear Material Yield Visualizer")
-st.caption("Penataan Berbasis Kotak dengan Kontrol Fine-tune Pratinjau Baris Kedua Interaktif")
+st.caption("Penataan Berbasis Kotak dengan Kontrol Fine-tune Efisien & Live Preview")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -136,19 +136,17 @@ if uploaded_file is not None:
             else:
                 rot_p2 = rot_p1
 
-            # SLIDER FINE-TUNE MANUAL UTAMA
+            # SLIDER FINE-TUNE GLOBAL
             st.markdown("##### 🎛️ Penyesuaian Spasi Grid Global")
             fine_tune_x = st.slider("Fine-tune Jarak Kolom / Step X", -float(bw), float(bw * 2), 0.0, step=0.1, help="Atur jarak horizontal antar komponen")
             fine_tune_y = st.slider("Fine-tune Jarak Baris / Pitch Y", -float(bh), float(bh), 0.0, step=0.1, help="Geser minus (-) untuk merapatkan jarak vertikal antar baris")
 
-            # KONTROL TAMBAHAN KHUSUS PREVIEW BARIS KEDUA (KHUSUS STAGGERED 3 & 4)
+            # KONTROL TAMBAHAN KHUSUS GESER BARIS KEDUA (KHUSUS STAGGERED 3 & 4)
             if is_staggered_cat:
                 st.markdown("##### 🎚️ Fine-tune Khusus Baris Kedua (Preview)")
                 preview_shift_x = st.slider("Geser Kanan/Kiri Baris 2 (Offset X)", -float(bw), float(bw), 0.0, step=0.1, help="Geser posisi horizontal baris kedua")
-                preview_shift_y = st.slider("Tarik ke Atas/Bawah Baris 2 (Offset Y)", -float(bh * 1.5), float(bh), 0.0, step=0.1, help="Tarik baris kedua mendekati atau menumpuk baris pertama")
             else:
                 preview_shift_x = 0.0
-                preview_shift_y = 0.0
 
         # HITUNG GEOMETRI P1 & P2
         p1 = rotate(base_poly, rot_p1, origin='center')
@@ -162,12 +160,17 @@ if uploaded_file is not None:
         p2_w = p2.bounds[2] - p2.bounds[0]
         p2_h = p2.bounds[3] - p2.bounds[1]
 
+        # STEP & PITCH UTAMA
+        step_x_base = p1_w if not is_twoway_cat else max(p1_w, p2_w)
+        step_x = step_x_base + inter_gap_cm + fine_tune_x
+        
+        unit_h = p1_h if not is_twoway_cat else max(p1_h, p2_h)
+        pitch_y = unit_h + inter_gap_cm + fine_tune_y
+
         # BENTUK PREVIEW GRID 2 BARIS BERDASARKAN KATEGORI
         preview_items = []
 
         if "Category 1" in category:
-            step_x = p1_w + inter_gap_cm + fine_tune_x
-            pitch_y = p1_h + inter_gap_cm + fine_tune_y
             # Baris 1
             preview_items.append((p1, 0))
             preview_items.append((translate(p1, xoff=step_x, yoff=0), 1))
@@ -176,10 +179,6 @@ if uploaded_file is not None:
             preview_items.append((translate(p1, xoff=step_x, yoff=pitch_y), 1))
 
         elif "Category 2" in category:
-            w_unit = max(p1_w, p2_w)
-            h_unit = max(p1_h, p2_h)
-            step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
-            pitch_y = h_unit + inter_gap_cm + fine_tune_y
             # Baris 1
             preview_items.append((p1, 0))
             preview_items.append((translate(p2, xoff=step_x, yoff=0), 1))
@@ -188,16 +187,12 @@ if uploaded_file is not None:
             preview_items.append((translate(p2, xoff=step_x, yoff=pitch_y), 1))
 
         elif "Category 3" in category:
-            step_x = p1_w + inter_gap_cm + fine_tune_x
-            pitch_y = p1_h + inter_gap_cm + fine_tune_y
             default_stagger_x = step_x / 2
-            default_stagger_y = pitch_y
-
             # Baris 1
             preview_items.append((p1, 0))
             preview_items.append((translate(p1, xoff=step_x, yoff=0), 1))
-            # Baris 2 dengan kustomisasi geser tambahan (preview_shift_x & preview_shift_y)
-            row2_y = default_stagger_y + preview_shift_y
+            # Baris 2 dengan stagger custom
+            row2_y = pitch_y
             row2_x1 = default_stagger_x + preview_shift_x
             row2_x2 = row2_x1 + step_x
 
@@ -205,18 +200,12 @@ if uploaded_file is not None:
             preview_items.append((translate(p1, xoff=row2_x2, yoff=row2_y), 1))
 
         else: # Category 4
-            w_unit = max(p1_w, p2_w)
-            h_unit = max(p1_h, p2_h)
-            step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
-            pitch_y = h_unit + inter_gap_cm + fine_tune_y
             default_stagger_x = step_x / 2
-            default_stagger_y = pitch_y
-
             # Baris 1
             preview_items.append((p1, 0))
             preview_items.append((translate(p2, xoff=step_x, yoff=0), 1))
-            # Baris 2 dengan kustomisasi geser tambahan
-            row2_y = default_stagger_y + preview_shift_y
+            # Baris 2 dengan stagger custom
+            row2_y = pitch_y
             row2_x1 = default_stagger_x + preview_shift_x
             row2_x2 = row2_x1 + step_x
 
@@ -241,7 +230,6 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # Untuk render penuh, kita tetap gunakan pitch_y standar atau bisa disesuaikan jika diperlukan
             if "Category 1" in category:
                 while item_idx < total_items:
                     row_y = margin + (row_idx * pitch_y)
@@ -280,11 +268,10 @@ if uploaded_file is not None:
                     row_idx += 1
 
             elif "Category 3" in category:
-                effective_pitch_y = (p1_h + inter_gap_cm + fine_tune_y) + preview_shift_y
                 stagger_x = (step_x / 2) + preview_shift_x
                 while item_idx < total_items:
                     is_row_even = (row_idx % 2 == 1)
-                    row_y = margin + (row_idx * effective_pitch_y)
+                    row_y = margin + (row_idx * pitch_y)
                     if row_y + p1_h > (sheet_length - margin):
                         break
                     row_start_x = margin + (stagger_x if is_row_even else 0.0)
@@ -304,11 +291,10 @@ if uploaded_file is not None:
 
             else: # Category 4
                 h_unit = max(p1_h, p2_h)
-                effective_pitch_y = (h_unit + inter_gap_cm + fine_tune_y) + preview_shift_y
                 stagger_x = (step_x / 2) + preview_shift_x
                 while item_idx < total_items:
                     is_row_even = (row_idx % 2 == 1)
-                    row_y = margin + (row_idx * effective_pitch_y)
+                    row_y = margin + (row_idx * pitch_y)
                     if row_y + h_unit > (sheet_length - margin):
                         break
                     row_start_x = margin + (stagger_x if is_row_even else 0.0)
