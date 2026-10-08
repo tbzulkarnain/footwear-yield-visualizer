@@ -682,717 +682,887 @@ if uploaded_file is not None:
                 scrolling=False
             )
 
-        # ====================================================
-        # STEP 2
-        # ====================================================
+       # ============================================================
+# STEP 2: TIGHT NESTING / MATERIAL OPTIMIZATION
+# ============================================================
 
-        st.markdown("---")
+st.markdown("---")
+st.subheader("🚀 Step 2: Tight Nesting Ke Lembaran Utuh")
 
-        st.subheader(
-            "🚀 Step 2: Duplikasi Ke Lembaran Utuh"
-        )
+if st.button(
+    "📊 Generate Tight Nesting",
+    type="primary"
+):
 
-        if st.button(
-            "📊 Duplikasi & Render Full Sheet Layout",
-            type="primary"
+    # ========================================================
+    # BASIC SETTINGS
+    # ========================================================
+
+    total_items = target_pairs * 2
+
+    placed_polygons = []
+
+    total_pattern_area = 0.0
+
+    item_idx = 0
+    row_idx = 0
+
+    # Resolusi pencarian.
+    # Semakin kecil → semakin rapat tetapi lebih lambat.
+    search_step = 0.10
+
+    # ========================================================
+    # NORMALIZE MASTER
+    # ========================================================
+
+    all_master = [
+        p1_poly,
+        p2_poly,
+        p3_poly
+    ]
+
+    base_x0 = min(
+        p.bounds[0]
+        for p in all_master
+    )
+
+    base_y0 = min(
+        p.bounds[1]
+        for p in all_master
+    )
+
+    p1_m = translate(
+        p1_poly,
+        xoff=-base_x0,
+        yoff=-base_y0
+    )
+
+    p2_m = translate(
+        p2_poly,
+        xoff=-base_x0,
+        yoff=-base_y0
+    )
+
+    p3_m = translate(
+        p3_poly,
+        xoff=-base_x0,
+        yoff=-base_y0
+    )
+
+    # ========================================================
+    # MASTER COLLISION CHECK
+    # ========================================================
+
+    master_polys = [
+        p1_m,
+        p2_m,
+        p3_m
+    ]
+
+    master_collision = False
+
+    for i in range(
+        len(master_polys)
+    ):
+
+        for j in range(
+            i + 1,
+            len(master_polys)
         ):
 
-            # =================================================
-            # INITIAL VARIABLES
-            # =================================================
-
-            placed_polygons = []
-
-            total_pattern_area = 0.0
-
-            total_items = (
-                target_pairs * 2
-            )
-
-            item_idx = 0
-            row_idx = 0
-
-            # =================================================
-            # NORMALIZE MASTER
-            # =================================================
-
-            all_master = [
-                p1_poly,
-                p2_poly,
-                p3_poly
-            ]
-
-            base_x0 = min(
-                p.bounds[0]
-                for p in all_master
-            )
-
-            base_y0 = min(
-                p.bounds[1]
-                for p in all_master
-            )
-
-            p1_m = translate(
-                p1_poly,
-                xoff=-base_x0,
-                yoff=-base_y0
-            )
-
-            p2_m = translate(
-                p2_poly,
-                xoff=-base_x0,
-                yoff=-base_y0
-            )
-
-            p3_m = translate(
-                p3_poly,
-                xoff=-base_x0,
-                yoff=-base_y0
-            )
-
-            # =================================================
-            # VALIDATE MASTER
-            # =================================================
-
-            master_polys = [
-                p1_m,
-                p2_m,
-                p3_m
-            ]
-
-            master_collision = False
-
-            for i in range(
-                len(master_polys)
+            if polygons_collide(
+                master_polys[i],
+                master_polys[j],
+                inter_gap
             ):
 
-                for j in range(
-                    i + 1,
-                    len(master_polys)
+                master_collision = True
+
+    if master_collision:
+
+        st.error(
+            "⚠️ Master P1/P2/P3 masih bertabrakan. "
+            "Adjust Step 1 terlebih dahulu."
+        )
+
+        st.stop()
+
+    # ========================================================
+    # MASTER DIMENSION
+    # ========================================================
+
+    master_min_x = min(
+        p.bounds[0]
+        for p in master_polys
+    )
+
+    master_max_x = max(
+        p.bounds[2]
+        for p in master_polys
+    )
+
+    master_min_y = min(
+        p.bounds[1]
+        for p in master_polys
+    )
+
+    master_max_y = max(
+        p.bounds[3]
+        for p in master_polys
+    )
+
+    master_width = (
+        master_max_x
+        -
+        master_min_x
+    )
+
+    master_height = (
+        master_max_y
+        -
+        master_min_y
+    )
+
+    # ========================================================
+    # ROW OFFSET
+    # ========================================================
+
+    row_off_x = (
+        p3_m.bounds[0]
+        -
+        p1_m.bounds[0]
+    )
+
+    row_off_y = (
+        p3_m.bounds[1]
+        -
+        p1_m.bounds[1]
+    )
+
+    # Safety
+    if abs(row_off_y) < 0.01:
+
+        row_off_y = (
+            master_height
+            +
+            inter_gap
+        )
+
+    # ========================================================
+    # COLLISION CHECK
+    # ========================================================
+
+    def candidate_is_safe(
+        candidates,
+        existing
+    ):
+
+        # ----------------------------------------------
+        # Check candidate vs candidate
+        # ----------------------------------------------
+
+        for i in range(
+            len(candidates)
+        ):
+
+            for j in range(
+                i + 1,
+                len(candidates)
+            ):
+
+                if polygons_collide(
+                    candidates[i],
+                    candidates[j],
+                    inter_gap
                 ):
 
-                    if polygons_collide(
-                        master_polys[i],
-                        master_polys[j],
-                        inter_gap
-                    ):
+                    return False
 
-                        master_collision = True
+        # ----------------------------------------------
+        # Check candidate vs existing
+        # ----------------------------------------------
 
-            if master_collision:
+        for candidate in candidates:
 
-                st.error(
-                    "⚠️ Master layout P1/P2/P3 "
-                    "masih bertabrakan. "
-                    "Silakan adjust slider Step 1."
+            for old_poly, _ in existing:
+
+                if polygons_collide(
+                    candidate,
+                    old_poly,
+                    inter_gap
+                ):
+
+                    return False
+
+        return True
+
+    # ========================================================
+    # SHEET CHECK
+    # ========================================================
+
+    def candidates_inside_sheet(
+        candidates
+    ):
+
+        for poly in candidates:
+
+            if not polygon_inside_sheet(
+                poly,
+                sheet_width,
+                sheet_length,
+                margin
+            ):
+
+                return False
+
+        return True
+
+    # ========================================================
+    # FIND TIGHT X
+    # ========================================================
+
+    def find_tight_x(
+        base_x,
+        row_y,
+        existing
+    ):
+
+        # ----------------------------------------------------
+        # Start from normal position
+        # ----------------------------------------------------
+
+        x = base_x
+
+        candidates = [
+            translate(
+                p1_m,
+                xoff=x,
+                yoff=row_y
+            ),
+            translate(
+                p2_m,
+                xoff=x,
+                yoff=row_y
+            )
+        ]
+
+        # ----------------------------------------------------
+        # Move left until collision
+        # ----------------------------------------------------
+
+        last_safe_x = None
+
+        while True:
+
+            test_x = (
+                x
+                -
+                search_step
+            )
+
+            test_candidates = [
+
+                translate(
+                    p1_m,
+                    xoff=test_x,
+                    yoff=row_y
+                ),
+
+                translate(
+                    p2_m,
+                    xoff=test_x,
+                    yoff=row_y
+                )
+            ]
+
+            # ----------------------------------------------
+            # Sheet boundary
+            # ----------------------------------------------
+
+            if not candidates_inside_sheet(
+                test_candidates
+            ):
+
+                break
+
+            # ----------------------------------------------
+            # Collision
+            # ----------------------------------------------
+
+            if not candidate_is_safe(
+                test_candidates,
+                existing
+            ):
+
+                break
+
+            x = test_x
+
+            last_safe_x = x
+
+        # ----------------------------------------------------
+        # If no left movement was possible
+        # use original position
+        # ----------------------------------------------------
+
+        if last_safe_x is None:
+
+            return x
+
+        return last_safe_x
+
+    # ========================================================
+    # FIND TIGHT Y
+    # ========================================================
+
+    def find_tight_y(
+        base_y,
+        row_x,
+        existing
+    ):
+
+        y = base_y
+
+        last_safe_y = y
+
+        while True:
+
+            test_y = (
+                y
+                -
+                search_step
+            )
+
+            test_candidates = [
+
+                translate(
+                    p1_m,
+                    xoff=row_x,
+                    yoff=test_y
+                ),
+
+                translate(
+                    p2_m,
+                    xoff=row_x,
+                    yoff=test_y
+                )
+            ]
+
+            if not candidates_inside_sheet(
+                test_candidates
+            ):
+
+                break
+
+            if not candidate_is_safe(
+                test_candidates,
+                existing
+            ):
+
+                break
+
+            y = test_y
+
+            last_safe_y = y
+
+        return last_safe_y
+
+    # ========================================================
+    # BUILD ROWS
+    # ========================================================
+
+    max_rows = 1000
+
+    while (
+        item_idx < total_items
+        and
+        row_idx < max_rows
+    ):
+
+        # ====================================================
+        # NOMINAL ROW POSITION
+        # ====================================================
+
+        row_y = (
+            margin
+            +
+            row_idx * row_off_y
+        )
+
+        # Alternating row offset
+        if row_idx % 2 == 1:
+
+            row_x = (
+                margin
+                +
+                row_off_x
+            )
+
+        else:
+
+            row_x = margin
+
+        # ====================================================
+        # TIGHTEN ROW VERTICALLY
+        # ====================================================
+
+        if placed_polygons:
+
+            row_y = find_tight_y(
+                row_y,
+                row_x,
+                placed_polygons
+            )
+
+        # ====================================================
+        # START X
+        # ====================================================
+
+        curr_x = row_x
+
+        # ====================================================
+        # PLACE PAIRS
+        # ====================================================
+
+        while (
+            item_idx < total_items
+        ):
+
+            # -----------------------------------------------
+            # Create pair
+            # -----------------------------------------------
+
+            candidates = [
+
+                translate(
+                    p1_m,
+                    xoff=curr_x,
+                    yoff=row_y
+                ),
+
+                translate(
+                    p2_m,
+                    xoff=curr_x,
+                    yoff=row_y
                 )
 
-                st.stop()
+            ]
+
+            # -----------------------------------------------
+            # Boundary
+            # -----------------------------------------------
+
+            if not candidates_inside_sheet(
+                candidates
+            ):
+
+                break
+
+            # -----------------------------------------------
+            # Collision
+            # -----------------------------------------------
+
+            if not candidate_is_safe(
+                candidates,
+                placed_polygons
+            ):
+
+                # Move right
+                curr_x += search_step
+
+                continue
 
             # =================================================
-            # PAIR WIDTH
+            # TIGHTEN HORIZONTALLY
             # =================================================
 
-            pair_min_x = min(
-                p1_m.bounds[0],
-                p2_m.bounds[0]
+            tight_x = find_tight_x(
+                curr_x,
+                row_y,
+                placed_polygons
             )
+
+            candidates = [
+
+                translate(
+                    p1_m,
+                    xoff=tight_x,
+                    yoff=row_y
+                ),
+
+                translate(
+                    p2_m,
+                    xoff=tight_x,
+                    yoff=row_y
+                )
+
+            ]
+
+            # =================================================
+            # FINAL VALIDATION
+            # =================================================
+
+            if not candidates_inside_sheet(
+                candidates
+            ):
+
+                break
+
+            if not candidate_is_safe(
+                candidates,
+                placed_polygons
+            ):
+
+                curr_x += search_step
+
+                continue
+
+            # =================================================
+            # ACCEPT P1
+            # =================================================
+
+            placed_polygons.append(
+                (
+                    candidates[0],
+                    0
+                )
+            )
+
+            total_pattern_area += (
+                candidates[0].area
+            )
+
+            item_idx += 1
+
+            # =================================================
+            # ACCEPT P2
+            # =================================================
+
+            if (
+                item_idx
+                <
+                total_items
+            ):
+
+                placed_polygons.append(
+                    (
+                        candidates[1],
+                        1
+                    )
+                )
+
+                total_pattern_area += (
+                    candidates[1].area
+                )
+
+                item_idx += 1
+
+            # =================================================
+            # NEXT PAIR
+            # =================================================
 
             pair_max_x = max(
-                p1_m.bounds[2],
-                p2_m.bounds[2]
+                candidates[0].bounds[2],
+                candidates[1].bounds[2]
             )
 
-            pair_width = (
+            # Start next pair from current right edge,
+            # NOT from pair_width.
+            curr_x = (
                 pair_max_x
                 -
-                pair_min_x
-            )
-
-            step_x = (
-                pair_width
-                +
                 inter_gap
             )
 
-            # =================================================
-            # ROW OFFSET
-            # =================================================
-
-            row_off_x = (
-                p3_m.bounds[0]
-                -
-                p1_m.bounds[0]
-            )
-
-            row_off_y = (
-                p3_m.bounds[1]
-                -
-                p1_m.bounds[1]
-            )
-
-            # Safety fallback
-            if abs(row_off_y) < 0.01:
-
-                row_off_y = (
-                    max(
-                        p1_m.bounds[3],
-                        p2_m.bounds[3],
-                        p3_m.bounds[3]
-                    )
-                    +
-                    inter_gap
-                )
-
-            # =================================================
-            # PLACE ROWS
-            # =================================================
-
-            max_rows = 1000
-
-            while (
-                item_idx < total_items
-                and
-                row_idx < max_rows
-            ):
-
-                is_row_even = (
-                    row_idx % 2 == 1
-                )
-
-                row_y = (
-                    margin
-                    +
-                    row_idx * row_off_y
-                )
-
-                x_shift = (
-                    row_off_x
-                    if is_row_even
-                    else 0.0
-                )
-
-                # ---------------------------------------------
-                # Stop if row is below sheet
-                # ---------------------------------------------
-
-                row_min_y = min(
-                    p1_m.bounds[1],
-                    p2_m.bounds[1]
-                )
-
-                row_max_y = max(
-                    p1_m.bounds[3],
-                    p2_m.bounds[3]
-                )
-
-                if (
-                    row_y + row_max_y
-                    >
-                    sheet_length - margin
-                ):
-
-                    break
-
-                # ---------------------------------------------
-                # Starting X
-                # ---------------------------------------------
-
-                curr_x = (
-                    margin
-                    +
-                    x_shift
-                )
-
-                while curr_x < margin:
-
-                    curr_x += step_x
-
-                # ---------------------------------------------
-                # Place pairs
-                # ---------------------------------------------
-
-                while (
-                    item_idx < total_items
-                ):
-
-                    candidate_p1 = translate(
-                        p1_m,
-                        xoff=curr_x,
-                        yoff=row_y
-                    )
-
-                    candidate_p2 = translate(
-                        p2_m,
-                        xoff=curr_x,
-                        yoff=row_y
-                    )
-
-                    # =========================================
-                    # BOUNDARY CHECK
-                    # =========================================
-
-                    p1_inside = (
-                        polygon_inside_sheet(
-                            candidate_p1,
-                            sheet_width,
-                            sheet_length,
-                            margin
-                        )
-                    )
-
-                    p2_inside = (
-                        polygon_inside_sheet(
-                            candidate_p2,
-                            sheet_width,
-                            sheet_length,
-                            margin
-                        )
-                    )
-
-                    if not (
-                        p1_inside
-                        and
-                        p2_inside
-                    ):
-
-                        break
-
-                    # =========================================
-                    # P1 vs P2
-                    # =========================================
-
-                    pair_collision = (
-                        polygons_collide(
-                            candidate_p1,
-                            candidate_p2,
-                            inter_gap
-                        )
-                    )
-
-                    if pair_collision:
-
-                        curr_x += (
-                            max(
-                                inter_gap,
-                                0.1
-                            )
-                        )
-
-                        continue
-
-                    # =========================================
-                    # CHECK AGAINST ALL EXISTING POLYGONS
-                    # =========================================
-
-                    p1_collision = False
-                    p2_collision = False
-
-                    for old_poly, _ in placed_polygons:
-
-                        if polygons_collide(
-                            candidate_p1,
-                            old_poly,
-                            inter_gap
-                        ):
-
-                            p1_collision = True
-                            break
-
-                    if not p1_collision:
-
-                        for old_poly, _ in placed_polygons:
-
-                            if polygons_collide(
-                                candidate_p2,
-                                old_poly,
-                                inter_gap
-                            ):
-
-                                p2_collision = True
-                                break
-
-                    # =========================================
-                    # IF COLLISION → MOVE RIGHT
-                    # =========================================
-
-                    if (
-                        p1_collision
-                        or
-                        p2_collision
-                    ):
-
-                        curr_x += (
-                            max(
-                                inter_gap,
-                                0.1
-                            )
-                        )
-
-                        continue
-
-                    # =========================================
-                    # ACCEPT P1
-                    # =========================================
-
-                    placed_polygons.append(
-                        (
-                            candidate_p1,
-                            0
-                        )
-                    )
-
-                    total_pattern_area += (
-                        candidate_p1.area
-                    )
-
-                    item_idx += 1
-
-                    # =========================================
-                    # ACCEPT P2
-                    # =========================================
-
-                    if (
-                        item_idx
-                        <
-                        total_items
-                    ):
-
-                        placed_polygons.append(
-                            (
-                                candidate_p2,
-                                1
-                            )
-                        )
-
-                        total_pattern_area += (
-                            candidate_p2.area
-                        )
-
-                        item_idx += 1
-
-                    # =========================================
-                    # NEXT POSITION
-                    # =========================================
-
-                    curr_x += step_x
-
-                row_idx += 1
-
-            # =================================================
-            # RESULT VALIDATION
-            # =================================================
-
-            if item_idx < total_items:
-
-                st.warning(
-                    f"⚠️ Hanya {item_idx} pcs yang "
-                    f"berhasil ditempatkan dari target "
-                    f"{total_items} pcs."
-                )
-
-            else:
-
-                st.success(
-                    f"✅ Semua {total_items} pcs "
-                    f"berhasil ditempatkan tanpa collision."
-                )
-
-            # =================================================
-            # SHEET AREA
-            # =================================================
-
-            total_sheet_area = (
-                sheet_width
-                *
-                sheet_length
-            )
-
-            # =================================================
-            # USED LENGTH
-            # =================================================
-
-            if placed_polygons:
-
-                max_used_y = max(
-                    poly.bounds[3]
-                    for poly, _ in placed_polygons
-                )
-
-            else:
-
-                max_used_y = 0.0
-
-            # =================================================
-            # USED AREA
-            # =================================================
-
-            if max_used_y > 0:
-
-                used_sheet_area = (
-                    sheet_width
-                    *
-                    max_used_y
-                )
-
-            else:
-
-                used_sheet_area = (
-                    total_sheet_area
-                )
-
-            # =================================================
-            # YIELD
-            # =================================================
-
-            component_yield = (
-
-                total_pattern_area
-                /
-                used_sheet_area
-                *
-                100
-
-                if used_sheet_area > 0
-
-                else 0.0
-            )
-
-            overall_sheet_yield = (
-
-                total_pattern_area
-                /
-                total_sheet_area
-                *
-                100
-
-                if total_sheet_area > 0
-
-                else 0.0
-            )
-
-            total_waste = (
-                100.0
-                -
-                component_yield
-            )
-
-            # =================================================
-            # PAIRS
-            # =================================================
-
-            pairs_completed = (
-                len(placed_polygons)
-                //
-                2
-            )
-
-            # =================================================
-            # CONSUMPTION
-            # =================================================
-
-            consumption_per_pair = (
-
-                (
-                    used_sheet_area
-                    /
-                    10000
-                )
-                /
-                max(
-                    pairs_completed,
-                    1
-                )
-            )
-
-            # =================================================
-            # SUMMARY
-            # =================================================
-
-            st.markdown(
-                "### 📊 Yield & Material Consumption Summary"
-            )
-
-            m1, m2, m3, m4, m5 = (
-                st.columns(5)
-            )
-
-            m1.metric(
-                "Komponen Terpasang",
-                f"{len(placed_polygons)} pcs "
-                f"({pairs_completed} pairs)"
-            )
-
-            m2.metric(
-                "Total Net Area",
-                f"{total_pattern_area:.1f} cm²"
-            )
-
-            m3.metric(
-                "Component Yield",
-                f"{component_yield:.2f} %"
-            )
-
-            m4.metric(
-                "Overall Sheet Yield",
-                f"{overall_sheet_yield:.2f} %"
-            )
-
-            m5.metric(
-                "Cutting Waste",
-                f"{total_waste:.2f} %"
-            )
-
-            st.info(
-                f"💡 **Consumption Rate:** "
-                f"{consumption_per_pair:.4f} m² / pair "
-                f"| Panjang Bahan Terpakai: "
-                f"{max_used_y:.1f} cm "
-                f"dari {sheet_length:.1f} cm"
-            )
-
-            # =================================================
-            # SVG FULL SHEET
-            # =================================================
-
-            scale_f = 8
-
-            svg_w_f = (
-                sheet_width
-                *
-                scale_f
-            )
-
-            svg_h_f = (
-                sheet_length
-                *
-                scale_f
-            )
-
-            svg_full = f'''
-            <svg
-                width="100%"
-                height="auto"
-                viewBox="0 0 {svg_w_f} {svg_h_f}"
-                xmlns="http://www.w3.org/2000/svg"
-                style="
-                    background-color:#F8F9FA;
-                    border:2px solid #333;
-                    border-radius:8px;
-                "
-            >
-            '''
-
-            # =================================================
-            # MARGIN BOX
-            # =================================================
-
-            m_x = (
-                margin
-                *
-                scale_f
-            )
-
-            m_y = (
-                margin
-                *
-                scale_f
-            )
-
-            m_w = (
-                sheet_width
-                -
-                2 * margin
-            ) * scale_f
-
-            m_h = (
-                sheet_length
-                -
-                2 * margin
-            ) * scale_f
-
-            svg_full += f'''
-            <rect
-                x="{m_x}"
-                y="{m_y}"
-                width="{m_w}"
-                height="{m_h}"
-                fill="none"
-                stroke="#ff4444"
-                stroke-dasharray="4"
-                stroke-width="1.5"
-            />
-            '''
-
-            # =================================================
-            # USED LENGTH LINE
-            # =================================================
-
-            if max_used_y > 0:
-
-                c_y = (
-                    max_used_y
-                    *
-                    scale_f
-                )
-
-                svg_full += f'''
-                <line
-                    x1="0"
-                    y1="{c_y}"
-                    x2="{svg_w_f}"
-                    y2="{c_y}"
-                    stroke="#3388ff"
-                    stroke-dasharray="3"
-                    stroke-width="2"
-                />
-                '''
-
-            # =================================================
-            # DRAW POLYGONS
-            # =================================================
-
-            colors = [
-                "#3388ff",
-                "#ff4444"
+            # Small move to avoid infinite loop
+            curr_x += search_step
+
+        # ====================================================
+        # NEXT ROW
+        # ====================================================
+
+        row_idx += 1
+
+    # ========================================================
+    # RESULT
+    # ========================================================
+
+    if item_idx < total_items:
+
+        st.warning(
+            f"⚠️ {item_idx} pcs berhasil ditempatkan "
+            f"dari target {total_items} pcs."
+        )
+
+    else:
+
+        st.success(
+            f"✅ Semua {total_items} pcs berhasil "
+            f"ditempatkan dengan tight nesting."
+        )
+
+    # ========================================================
+    # AREA
+    # ========================================================
+
+    total_sheet_area = (
+        sheet_width
+        *
+        sheet_length
+    )
+
+    if placed_polygons:
+
+        min_used_x = min(
+            poly.bounds[0]
+            for poly, _ in placed_polygons
+        )
+
+        max_used_x = max(
+            poly.bounds[2]
+            for poly, _ in placed_polygons
+        )
+
+        min_used_y = min(
+            poly.bounds[1]
+            for poly, _ in placed_polygons
+        )
+
+        max_used_y = max(
+            poly.bounds[3]
+            for poly, _ in placed_polygons
+        )
+
+        used_width = (
+            max_used_x
+            -
+            min_used_x
+        )
+
+        used_length = (
+            max_used_y
+            -
+            min_used_y
+        )
+
+        used_sheet_area = (
+            used_width
+            *
+            used_length
+        )
+
+    else:
+
+        used_width = 0
+        used_length = 0
+
+        used_sheet_area = 0
+
+    # ========================================================
+    # YIELD
+    # ========================================================
+
+    component_yield = (
+
+        total_pattern_area
+        /
+        used_sheet_area
+        *
+        100
+
+        if used_sheet_area > 0
+
+        else 0
+    )
+
+    overall_sheet_yield = (
+
+        total_pattern_area
+        /
+        total_sheet_area
+        *
+        100
+
+        if total_sheet_area > 0
+
+        else 0
+    )
+
+    total_waste = (
+        100
+        -
+        component_yield
+    )
+
+    pairs_completed = (
+        len(placed_polygons)
+        //
+        2
+    )
+
+    consumption_per_pair = (
+
+        (
+            used_sheet_area
+            /
+            10000
+        )
+        /
+        max(
+            pairs_completed,
+            1
+        )
+    )
+
+    # ========================================================
+    # SUMMARY
+    # ========================================================
+
+    st.markdown(
+        "### 📊 Yield & Material Consumption Summary"
+    )
+
+    m1, m2, m3, m4, m5 = st.columns(5)
+
+    m1.metric(
+        "Komponen",
+        f"{len(placed_polygons)} pcs"
+    )
+
+    m2.metric(
+        "Net Area",
+        f"{total_pattern_area:.1f} cm²"
+    )
+
+    m3.metric(
+        "Tight Yield",
+        f"{component_yield:.2f}%"
+    )
+
+    m4.metric(
+        "Sheet Yield",
+        f"{overall_sheet_yield:.2f}%"
+    )
+
+    m5.metric(
+        "Waste",
+        f"{total_waste:.2f}%"
+    )
+
+    st.info(
+        f"💡 **Consumption:** "
+        f"{consumption_per_pair:.4f} m² / pair "
+        f"| Used Width: {used_width:.1f} cm "
+        f"| Used Length: {used_length:.1f} cm"
+    )
+
+    # ========================================================
+    # SVG
+    # ========================================================
+
+    scale_f = 8
+
+    svg_w_f = (
+        sheet_width
+        *
+        scale_f
+    )
+
+    svg_h_f = (
+        max(
+            sheet_length,
+            used_length + margin * 2
+        )
+        *
+        scale_f
+    )
+
+    svg_full = f'''
+    <svg
+        width="100%"
+        height="auto"
+        viewBox="0 0 {svg_w_f} {svg_h_f}"
+        xmlns="http://www.w3.org/2000/svg"
+        style="
+            background-color:#F8F9FA;
+            border:2px solid #333;
+            border-radius:8px;
+        "
+    >
+    '''
+
+    # ========================================================
+    # SHEET
+    # ========================================================
+
+    svg_full += f'''
+    <rect
+        x="0"
+        y="0"
+        width="{svg_w_f}"
+        height="{svg_h_f}"
+        fill="#F8F9FA"
+    />
+    '''
+
+    # ========================================================
+    # MARGIN
+    # ========================================================
+
+    svg_full += f'''
+    <rect
+        x="{margin * scale_f}"
+        y="{margin * scale_f}"
+        width="{(sheet_width - 2 * margin) * scale_f}"
+        height="{(sheet_length - 2 * margin) * scale_f}"
+        fill="none"
+        stroke="#ff4444"
+        stroke-dasharray="4"
+        stroke-width="1.5"
+    />
+    '''
+
+    # ========================================================
+    # POLYGONS
+    # ========================================================
+
+    colors = [
+        "#3388ff",
+        "#ff4444"
+    ]
+
+    for poly, idx in placed_polygons:
+
+        pts = list(
+            poly.exterior.coords
+        )
+
+        pts_str = " ".join(
+            [
+                f"{p[0] * scale_f:.1f},"
+                f"{p[1] * scale_f:.1f}"
+                for p in pts
             ]
+        )
 
-            for poly, idx in placed_polygons:
+        fill_col = colors[
+            idx % 2
+        ]
 
-                pts = list(
-                    poly.exterior.coords
-                )
+        svg_full += f'''
+        <polygon
+            points="{pts_str}"
+            fill="{fill_col}"
+            stroke="#111"
+            stroke-width="0.8"
+            opacity="0.85"
+        />
+        '''
 
-                pts_str = " ".join(
-                    [
-                        f"{p[0] * scale_f:.1f},"
-                        f"{p[1] * scale_f:.1f}"
-                        for p in pts
-                    ]
-                )
+    svg_full += "</svg>"
 
-                fill_col = colors[
-                    idx % 2
-                ]
-
-                svg_full += f'''
-                <polygon
-                    points="{pts_str}"
-                    fill="{fill_col}"
-                    stroke="#111"
-                    stroke-width="0.8"
-                    opacity="0.85"
-                />
-                '''
-
-            svg_full += "</svg>"
-
-            # =================================================
-            # DISPLAY
-            # =================================================
-
-            st.components.v1.html(
-                svg_full,
-                height=650,
-                scrolling=True
-            )
+    st.components.v1.html(
+        svg_full,
+        height=700,
+        scrolling=True
+    )
