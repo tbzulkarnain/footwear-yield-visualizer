@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 st.title("⚡ Footwear Material Yield Visualizer")
-st.caption("Penataan Berbasis Kotak dengan 4 Kategori Utama ProCost & Live Preview")
+st.caption("Penataan Berbasis Kotak dengan 4 Kategori Utama ProCost & Live 2-Row Preview")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -73,18 +73,18 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
         return []
 
 
-def generate_svg_preview_pair(polygons_to_show, width_cm=40, height_cm=30):
+def generate_svg_preview_grid(items_with_color, width_cm=45, height_cm=30):
     scale = 10
     svg_w = width_cm * scale
     svg_h = height_cm * scale
 
     svg_code = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg" style="background-color:#F8F9FA; border:2px dashed #666; border-radius:8px;">'
     
-    colors = ['#3388ff', '#ff4444']
-    for idx, poly in enumerate(polygons_to_show):
+    color_map = {0: '#3388ff', 1: '#ff4444'} # 0 = Biru, 1 = Merah
+    for poly, color_idx in items_with_color:
         pts = list(poly.exterior.coords)
         pts_str = " ".join([f"{p[0] * scale:.1f},{p[1] * scale:.1f}" for p in pts])
-        col = colors[idx % len(colors)]
+        col = color_map.get(color_idx % 2, '#3388ff')
         svg_code += f'<polygon points="{pts_str}" fill="{col}" stroke="#111" stroke-width="1.5" opacity="0.85"/>'
 
     svg_code += "</svg>"
@@ -152,37 +152,61 @@ if uploaded_file is not None:
         p2_w = p2.bounds[2] - p2.bounds[0]
         p2_h = p2.bounds[3] - p2.bounds[1]
 
-        # TENTUKAN STEP & PITCH BERDASARKAN 4 KATEGORI
+        # BENTUK PREVIEW GRID 2 BARIS BERDASARKAN KATEGORI
+        preview_items = []
+
         if "Category 1" in category:
             step_x = p1_w + inter_gap_cm + fine_tune_x
             pitch_y = p1_h + inter_gap_cm + fine_tune_y
-            preview_items = [p1, translate(p1, xoff=step_x, yoff=0)]
+            # Baris 1 (Biru & Merah selang-seling)
+            preview_items.append((p1, 0))
+            preview_items.append((translate(p1, xoff=step_x, yoff=0), 1))
+            # Baris 2
+            preview_items.append((translate(p1, xoff=0, yoff=pitch_y), 0))
+            preview_items.append((translate(p1, xoff=step_x, yoff=pitch_y), 1))
 
         elif "Category 2" in category:
             w_unit = max(p1_w, p2_w)
             h_unit = max(p1_h, p2_h)
             step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
             pitch_y = h_unit + inter_gap_cm + fine_tune_y
-            preview_items = [p1, translate(p2, xoff=step_x, yoff=0)]
+            # Baris 1 (P1 & P2 interlock)
+            preview_items.append((p1, 0))
+            preview_items.append((translate(p2, xoff=step_x, yoff=0), 1))
+            # Baris 2 (P1 & P2 interlock)
+            preview_items.append((translate(p1, xoff=0, yoff=pitch_y), 0))
+            preview_items.append((translate(p2, xoff=step_x, yoff=pitch_y), 1))
 
         elif "Category 3" in category:
             step_x = p1_w + inter_gap_cm + fine_tune_x
             pitch_y = p1_h + inter_gap_cm + fine_tune_y
-            preview_items = [p1, translate(p1, xoff=step_x, yoff=0), translate(p1, xoff=step_x/2, yoff=pitch_y)]
+            stagger_x = step_x / 2
+            # Baris 1
+            preview_items.append((p1, 0))
+            preview_items.append((translate(p1, xoff=step_x, yoff=0), 1))
+            # Baris 2 (Staggered dengan Pcs Merah & Biru)
+            preview_items.append((translate(p1, xoff=stagger_x, yoff=pitch_y), 0))
+            preview_items.append((translate(p1, xoff=stagger_x + step_x, yoff=pitch_y), 1))
 
         else: # Category 4
             w_unit = max(p1_w, p2_w)
             h_unit = max(p1_h, p2_h)
             step_x = (w_unit / 2) + inter_gap_cm + fine_tune_x
             pitch_y = h_unit + inter_gap_cm + fine_tune_y
-            preview_items = [p1, translate(p2, xoff=step_x, yoff=0), translate(p1, xoff=step_x/2, yoff=pitch_y)]
+            stagger_x = step_x / 2
+            # Baris 1
+            preview_items.append((p1, 0))
+            preview_items.append((translate(p2, xoff=step_x, yoff=0), 1))
+            # Baris 2 (Staggered Two Way)
+            preview_items.append((translate(p1, xoff=stagger_x, yoff=pitch_y), 0))
+            preview_items.append((translate(p2, xoff=stagger_x + step_x, yoff=pitch_y), 1))
 
-        # LIVE PREVIEW MASTER
+        # LIVE PREVIEW MASTER (2 BARIS)
         with col_prev:
-            st.markdown("##### 👁️ Live Preview Master Layout (Sinkron)")
+            st.markdown("##### 👁️ Live Preview Grid (2 Baris)")
             st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.1f} cm | Pitch Y: {pitch_y:.1f} cm")
-            svg_preview = generate_svg_preview_pair(preview_items, width_cm=45, height_cm=28)
-            st.components.v1.html(svg_preview, height=280, scrolling=False)
+            svg_preview = generate_svg_preview_grid(preview_items, width_cm=45, height_cm=30)
+            st.components.v1.html(svg_preview, height=290, scrolling=False)
 
         # STEP 2: DUPLIKASI KE LEMBARAN UTUH
         st.markdown("---")
@@ -201,12 +225,14 @@ if uploaded_file is not None:
                     if row_y + p1_h > (sheet_length - margin):
                         break
                     curr_x = margin
+                    col_idx = 0
                     while item_idx < total_items and (curr_x + p1_w) <= (sheet_width - margin):
                         cand = translate(p1, xoff=curr_x, yoff=row_y)
-                        placed_polygons.append((cand, 0))
+                        placed_polygons.append((cand, col_idx % 2))
                         total_pattern_area += cand.area
                         item_idx += 1
                         curr_x += step_x
+                        col_idx += 1
                     row_idx += 1
 
             elif "Category 2" in category:
@@ -219,12 +245,11 @@ if uploaded_file is not None:
                     col_idx = 0
                     while item_idx < total_items and curr_x <= (sheet_width - margin):
                         p_curr = p1 if col_idx % 2 == 0 else p2
-                        color_idx = 0 if col_idx % 2 == 0 else 1
                         current_w = p1_w if col_idx % 2 == 0 else p2_w
                         cand = translate(p_curr, xoff=curr_x, yoff=row_y)
                         
                         if curr_x >= margin and (curr_x + current_w) <= (sheet_width - margin):
-                            placed_polygons.append((cand, color_idx))
+                            placed_polygons.append((cand, col_idx % 2))
                             total_pattern_area += cand.area
                             item_idx += 1
                         curr_x += step_x
@@ -242,13 +267,15 @@ if uploaded_file is not None:
                     while row_start_x - step_x >= margin:
                         row_start_x -= step_x
                     curr_x = row_start_x
+                    col_idx = 0
                     while item_idx < total_items and curr_x <= (sheet_width - margin):
                         if curr_x >= margin and (curr_x + p1_w) <= (sheet_width - margin):
                             cand = translate(p1, xoff=curr_x, yoff=row_y)
-                            placed_polygons.append((cand, 0))
+                            placed_polygons.append((cand, col_idx % 2))
                             total_pattern_area += cand.area
                             item_idx += 1
                         curr_x += step_x
+                        col_idx += 1
                     row_idx += 1
 
             else: # Category 4
@@ -266,12 +293,11 @@ if uploaded_file is not None:
                     col_idx = 0
                     while item_idx < total_items and curr_x <= (sheet_width - margin):
                         p_curr = p1 if col_idx % 2 == 0 else p2
-                        color_idx = 0 if col_idx % 2 == 0 else 1
                         current_w = p1_w if col_idx % 2 == 0 else p2_w
                         cand = translate(p_curr, xoff=curr_x, yoff=row_y)
                         
                         if curr_x >= margin and (curr_x + current_w) <= (sheet_width - margin):
-                            placed_polygons.append((cand, color_idx))
+                            placed_polygons.append((cand, col_idx % 2))
                             total_pattern_area += cand.area
                             item_idx += 1
                         curr_x += step_x
@@ -317,11 +343,10 @@ if uploaded_file is not None:
                 c_y = max_used_y * scale_f
                 svg_full += f'<line x1="0" y1="{c_y}" x2="{svg_w_f}" y2="{c_y}" stroke="#3388ff" stroke-dasharray="3" stroke-width="2"/>'
 
-            colors = ['#3388ff', '#ff4444']
             for poly, idx in placed_polygons:
                 pts = list(poly.exterior.coords)
-                pts_str = " ".join([f"{p[0] * scale_f:.1f},{p[1] * scale_f:.1f}" for p in pts])
-                fill_col = colors[idx % 2]
+                pts_str = " ".join([f"{p[0] * scale_f:.1f},{p[1] * scale_f:.1f}" for p in pts] )
+                fill_col = '#3388ff' if idx % 2 == 0 else '#ff4444'
                 svg_full += f'<polygon points="{pts_str}" fill="{fill_col}" stroke="#111" stroke-width="0.8" opacity="0.85"/>'
 
             svg_full += '</svg>'
