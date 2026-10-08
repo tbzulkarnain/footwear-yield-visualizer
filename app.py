@@ -28,7 +28,6 @@ with col_p3:
     margin = st.number_input("Margin Pinggir (cm)", value=1.0, step=0.5)
 with col_p4:
     target_pairs = st.number_input("Target Sepatu (Pasang)", value=50, min_value=1, step=1)
-    # Total pcs komponen yang harus dipotong otomatis 2x lipat dari target pasang (Kiri & Kanan)
     target_pieces = target_pairs * 2
 
 uploaded_file = st.file_uploader("Upload Gambar Pattern Component Master", type=["png", "jpg", "jpeg"])
@@ -311,30 +310,34 @@ if uploaded_file is not None:
                         col_idx += 1
                     row_idx += 1
 
-            # SUMMARY METRICS (Dikonversi ke Format Pasang / Pairs Ala ProCost)
+            # SUMMARY METRICS & PROCOST YIELD CALCULATION
             total_sheet_area = sheet_width * sheet_length
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
             used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
 
-            component_yield = (total_pattern_area / used_sheet_area) * 100 if used_sheet_area > 0 else 0.0
-            overall_sheet_yield = (total_pattern_area / total_sheet_area) * 100
-            total_waste = 100.0 - component_yield
-
             pieces_completed = len(placed_polygons)
-            pairs_completed = pieces_completed // 2  # Konversi total pcs ke jumlah pasang sepatu
+            pairs_completed = pieces_completed // 2  # Total pasang sepatu
+
+            # Hitung ProCost Yield (Pairs per Meter Panjang Bahan)
+            used_length_m = max_used_y / 100.0  # konversi cm ke meter
+            procost_yield_per_m = pairs_completed / used_length_m if used_length_m > 0 else 0.0
             
-            # Konsumsi per pasang (m² / pair) - Standar Utama ProCost
-            consumption_per_pair = (used_sheet_area / 10000) / max(pairs_completed, 1)
+            # Konsumsi per pasang (m² / pair) -> 1 / yield_per_m * (lebar_bahan_meter)
+            sheet_width_m = sheet_width / 100.0
+            consumption_per_pair = (1.0 / procost_yield_per_m) * sheet_width_m if procost_yield_per_m > 0 else 0.0
+
+            utilization_rate = (total_pattern_area / used_sheet_area) * 100 if used_sheet_area > 0 else 0.0
+            total_waste = 100.0 - utilization_rate
 
             st.markdown("### 📊 Yield & Material Consumption Summary (ProCost Standard)")
             m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric("Sepatu Terpasang", f"{pairs_completed} pasang")
-            m2.metric("Total Net Area", f"{total_pattern_area:.1f} cm²")
-            m3.metric("Component Yield", f"{component_yield:.2f} %")
-            m4.metric("Overall Sheet Yield", f"{overall_sheet_yield:.2f} %")
+            m2.metric("ProCost Yield", f"{procost_yield_per_m:.2f} pairs/m")
+            m3.metric("Consumption Rate", f"{consumption_per_pair:.4f} m²/pair")
+            m4.metric("Material Utilization", f"{utilization_rate:.2f} %")
             m5.metric("Cutting Waste", f"{total_waste:.2f} %")
 
-            st.info(f"💡 **Consumption Standard (ProCost):** **{consumption_per_pair:.4f} m² / pair** | Panjang Bahan Terpakai: {max_used_y:.1f} cm dari {sheet_length:.1f} cm")
+            st.info(f"💡 **Formula ProCost Check:** 1 / Yield ({procost_yield_per_m:.2f}) × Lebar ({sheet_width_m:.2f}m) = **{consumption_per_pair:.4f} m²/pair** | Panjang Terpakai: {max_used_y:.1f} cm")
 
             # RENDER SVG FULL SHEET
             scale_f = 6.0
