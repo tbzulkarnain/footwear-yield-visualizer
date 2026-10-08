@@ -11,20 +11,25 @@ st.set_page_config(
 )
 
 st.title("⚡ Footwear Material Yield Visualizer")
-st.caption("Penataan Berbasis Kotak dengan Kontrol Fine-tune Efisien & Live Preview")
+st.markdown("---")
 
 # ============================================================
-# SIDEBAR PARAMETER
+# TAHAP 1: SETUP PARAMETER UTAMA DI HALAMAN UTAMA (COMPACT GRID)
 # ============================================================
 
-sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value=140.0, step=5.0)
-sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
-margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, step=0.5)
+st.subheader("📋 Setup Parameter Bahan & Target")
+col_p1, col_p2, col_p3, col_p4 = st.columns(4)
 
-inter_gap_mm = st.sidebar.number_input("Gap Antar Komponen / Pisau (mm)", value=2.0, min_value=0.0, max_value=20.0, step=0.5)
-inter_gap_cm = inter_gap_mm / 10.0
+with col_p1:
+    sheet_width = st.number_input("Lebar Material (cm)", value=140.0, step=5.0)
+with col_p2:
+    sheet_length = st.number_input("Panjang Material (cm)", value=100.0, step=5.0)
+with col_p3:
+    margin = st.number_input("Margin Pinggir (cm)", value=1.0, step=0.5)
+with col_p4:
+    target_pieces = st.number_input("Target Komponen (Pcs)", value=100, min_value=1, step=1)
 
-target_pieces = st.sidebar.number_input("Jumlah Target Komponen (Pcs)", value=100, min_value=1, step=1)
+uploaded_file = st.file_uploader("Upload Gambar Pattern Component Master", type=["png", "jpg", "jpeg"])
 
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE
@@ -91,10 +96,8 @@ def generate_svg_preview_grid(items_with_color, width_cm=45, height_cm=30):
     return svg_code
 
 # ============================================================
-# MAIN APP LOGIC
+# MAIN APP LOGIC (JIKA FILE DI-UPLOAD)
 # ============================================================
-
-uploaded_file = st.file_uploader("Upload Gambar Pattern Component Master", type=["png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
@@ -107,16 +110,13 @@ if uploaded_file is not None:
         bw = base_poly.bounds[2] - base_poly.bounds[0]
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
-        # STEP 1: KONTROL ROTASI & KATEGORI
         st.markdown("---")
-        st.subheader("🛠️ Step 1: Atur Posisi & Pilih Kategori Layout")
+        st.subheader("🛠️ Konfigurasi Tata Letak & Fine-tune Presisi")
 
+        # Layout 2 Kolom Utama (Kontrol di Kiri, Preview di Kanan)
         col_ctrl, col_prev = st.columns([1.1, 0.9])
 
         with col_ctrl:
-            st.markdown("##### ⚙️ Kontrol Rotasi & Kategori ProCost")
-            rot_p1 = st.slider("Rotasi Pcs 1 / Biru (°)", 0, 360, 90, step=5)
-            
             category = st.selectbox(
                 "Pilih Kategori ProCost",
                 [
@@ -130,21 +130,25 @@ if uploaded_file is not None:
             is_twoway_cat = "Two Way" in category
             is_staggered_cat = "Staggered" in category
 
-            if is_twoway_cat:
-                default_rot2 = (rot_p1 + 180) % 360
-                rot_p2 = st.slider("Rotasi Pcs 2 / Merah (°)", 0, 360, int(default_rot2), step=5)
-            else:
-                rot_p2 = rot_p1
+            c_rot1, c_rot2 = st.columns(2)
+            with c_rot1:
+                rot_p1 = st.number_input("Rotasi Pcs 1 (°)", min_value=0, max_value=360, value=90, step=5)
+            with c_rot2:
+                if is_twoway_cat:
+                    default_rot2 = (rot_p1 + 180) % 360
+                    rot_p2 = st.number_input("Rotasi Pcs 2 (°)", min_value=0, max_value=360, value=int(default_rot2), step=5)
+                else:
+                    rot_p2 = rot_p1
 
-            # SLIDER FINE-TUNE GLOBAL
-            st.markdown("##### 🎛️ Penyesuaian Spasi Grid Global")
-            fine_tune_x = st.slider("Fine-tune Jarak Kolom / Step X", -float(bw), float(bw * 2), 0.0, step=0.1, help="Atur jarak horizontal antar komponen")
-            fine_tune_y = st.slider("Fine-tune Jarak Baris / Pitch Y", -float(bh), float(bh), 0.0, step=0.1, help="Geser minus (-) untuk merapatkan jarak vertikal antar baris")
+            st.markdown("##### 🎛️ Penyesuaian Spasi Grid (Number Input Presisi)")
+            c_ft1, c_ft2 = st.columns(2)
+            with c_ft1:
+                fine_tune_x = st.number_input("Jarak Kolom / Step X", value=0.0, step=0.1, format="%.2f")
+            with c_ft2:
+                fine_tune_y = st.number_input("Jarak Baris / Pitch Y", value=0.0, step=0.1, format="%.2f")
 
-            # KONTROL TAMBAHAN KHUSUS GESER BARIS KEDUA (KHUSUS STAGGERED 3 & 4)
             if is_staggered_cat:
-                st.markdown("##### 🎚️ Fine-tune Khusus Baris Kedua (Preview)")
-                preview_shift_x = st.slider("Geser Kanan/Kiri Baris 2 (Offset X)", -float(bw), float(bw), 0.0, step=0.1, help="Geser posisi horizontal baris kedua")
+                preview_shift_x = st.number_input("Geser Baris 2 (Offset X)", value=0.0, step=0.1, format="%.2f")
             else:
                 preview_shift_x = 0.0
 
@@ -160,70 +164,62 @@ if uploaded_file is not None:
         p2_w = p2.bounds[2] - p2.bounds[0]
         p2_h = p2.bounds[3] - p2.bounds[1]
 
-        # STEP & PITCH UTAMA
         step_x_base = p1_w if not is_twoway_cat else max(p1_w, p2_w)
-        step_x = step_x_base + inter_gap_cm + fine_tune_x
+        step_x = step_x_base + fine_tune_x
         
         unit_h = p1_h if not is_twoway_cat else max(p1_h, p2_h)
-        pitch_y = unit_h + inter_gap_cm + fine_tune_y
+        pitch_y = unit_h + fine_tune_y
 
-        # BENTUK PREVIEW GRID 2 BARIS BERDASARKAN KATEGORI
+        # BENTUK PREVIEW GRID 2 BARIS
         preview_items = []
 
         if "Category 1" in category:
-            # Baris 1
             preview_items.append((p1, 0))
             preview_items.append((translate(p1, xoff=step_x, yoff=0), 1))
-            # Baris 2
             preview_items.append((translate(p1, xoff=0, yoff=pitch_y), 0))
             preview_items.append((translate(p1, xoff=step_x, yoff=pitch_y), 1))
 
         elif "Category 2" in category:
-            # Baris 1
             preview_items.append((p1, 0))
             preview_items.append((translate(p2, xoff=step_x, yoff=0), 1))
-            # Baris 2
             preview_items.append((translate(p1, xoff=0, yoff=pitch_y), 0))
             preview_items.append((translate(p2, xoff=step_x, yoff=pitch_y), 1))
 
         elif "Category 3" in category:
             default_stagger_x = step_x / 2
-            # Baris 1
             preview_items.append((p1, 0))
             preview_items.append((translate(p1, xoff=step_x, yoff=0), 1))
-            # Baris 2 dengan stagger custom
             row2_y = pitch_y
             row2_x1 = default_stagger_x + preview_shift_x
             row2_x2 = row2_x1 + step_x
-
             preview_items.append((translate(p1, xoff=row2_x1, yoff=row2_y), 0))
             preview_items.append((translate(p1, xoff=row2_x2, yoff=row2_y), 1))
 
         else: # Category 4
             default_stagger_x = step_x / 2
-            # Baris 1
             preview_items.append((p1, 0))
             preview_items.append((translate(p2, xoff=step_x, yoff=0), 1))
-            # Baris 2 dengan stagger custom
             row2_y = pitch_y
             row2_x1 = default_stagger_x + preview_shift_x
             row2_x2 = row2_x1 + step_x
-
             preview_items.append((translate(p1, xoff=row2_x1, yoff=row2_y), 0))
             preview_items.append((translate(p2, xoff=row2_x2, yoff=row2_y), 1))
 
-        # LIVE PREVIEW MASTER (2 BARIS)
+        # LIVE PREVIEW MASTER (2 BARIS) DI SISI KANAN
         with col_prev:
             st.markdown("##### 👁️ Live Preview Grid (2 Baris)")
             st.info(f"💡 Mode: **{category.split(':')[0]}** | Step X: {step_x:.1f} cm | Pitch Y: {pitch_y:.1f} cm")
             svg_preview = generate_svg_preview_grid(preview_items, width_cm=45, height_cm=30)
-            st.components.v1.html(svg_preview, height=290, scrolling=False)
+            st.components.v1.html(svg_preview, height=270, scrolling=False)
 
-        # STEP 2: DUPLIKASI KE LEMBARAN UTUH
+        # ============================================================
+        # TAHAP 2: RENDER HASIL PENUH KE LEMBARAN BAHAN
+        # ============================================================
+
         st.markdown("---")
-        st.subheader("🚀 Step 2: Render Hasil Penuh ke Lembaran Bahan")
+        st.subheader("🚀 Render Hasil Penuh ke Lembaran Bahan")
 
-        if st.button("📊 Render Layout ProCost", type="primary"):
+        if st.button("📊 Proses Render Layout ProCost", type="primary", use_container_width=True):
             placed_polygons = []
             total_pattern_area = 0.0
             total_items = target_pieces
