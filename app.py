@@ -7,7 +7,7 @@ from shapely.affinity import translate, rotate
 st.set_page_config(page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide")
 
 st.title("⚡ Footwear Material Yield Visualizer (3-Component Master Preview)")
-st.caption("Atur 3 Komponen Master -> Duplikasi Matriks Presisi 100% Bebas Tabrakan")
+st.caption("Atur 3 Komponen Master -> Grid Duplikasi Zig-Zag Presisi & Bebas Tabrakan")
 
 # --- SIDEBAR PARAMETER SHEET ---
 st.sidebar.header("⚙️ Parameter Lembaran Material")
@@ -147,9 +147,8 @@ if uploaded_file is not None:
         poly2_zero = translate(poly2_custom, xoff=-p_minx, yoff=-p_miny)
         poly3_zero = translate(poly3_custom, xoff=-p_minx, yoff=-p_miny)
 
-        # Lebar Efektif Pasangan (Unit Width & Height)
+        # Lebar Efektif Pasangan (Unit Width)
         unit_w = max(poly1_zero.bounds[2], poly2_zero.bounds[2]) - min(poly1_zero.bounds[0], poly2_zero.bounds[0])
-        unit_h = max(poly1_zero.bounds[3], poly2_zero.bounds[3]) - min(poly1_zero.bounds[1], poly2_zero.bounds[1])
 
         # Vektor Pergeseran Baris 2 relatif terhadap Komponen 1
         row2_offset_x = poly3_zero.bounds[0] - poly1_zero.bounds[0]
@@ -183,7 +182,7 @@ if uploaded_file is not None:
             svg_3pcs = generate_svg_3pcs_preview(p1_unit, p2_unit, p3_unit, width_cm=max(pw, 25), height_cm=max(ph, 25))
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
-        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH ---
+        # --- STEP 2: DUPLIKASI KE LEMBARAN UTUH (LOGIKA ZIG-ZAG) ---
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -195,45 +194,40 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            curr_base_y = margin
-
-            # Step per x (jarak antar pasangan sejajar horizontal)
             step_x = unit_w + inter_gap
 
             while item_idx < total_items:
-                is_row_even = (row_idx % 2 == 0)
+                is_row_even = (row_idx % 2 == 1)
                 
-                # Hitung Y Baris Berdasarkan Vektor Pergeseran
+                # Jarak vertikal lurus bertingkat
                 row_y = margin + (row_idx * row2_offset_y)
                 
-                # Pergeseran X Selang-Seling Baris
-                x_shift = (row_idx * row2_offset_x)
+                # Pergeseran horizontal Zig-Zag (hanya berlaku pada baris genap)
+                x_shift = row2_offset_x if is_row_even else 0.0
 
-                # Jika Y melampaui lembaran, hentikan
                 if row_y + min(poly1_zero.bounds[3], poly2_zero.bounds[3]) > (sheet_length - margin):
                     break
 
                 curr_x = margin + x_shift
 
-                # Kembalikan x ke area lembaran jika terlalu ke kiri/kanan
+                # Kembalikan x ke batas margin lembaran
                 while curr_x < margin:
                     curr_x += step_x
 
                 while item_idx < total_items and (curr_x + unit_w) <= (sheet_width - margin):
-                    # Komponen 1 (Biru)
+                    # Pasangan Unit (Biru + Merah)
                     p1 = translate(poly1_zero, xoff=curr_x, yoff=row_y)
+                    p2 = translate(poly2_zero, xoff=curr_x, yoff=row_y)
+
                     if p1.bounds[2] <= (sheet_width - margin) and p1.bounds[3] <= (sheet_length - margin) and p1.bounds[0] >= margin:
                         placed_polygons.append((p1, 0))
                         total_pattern_area += p1.area
                         item_idx += 1
 
-                    # Komponen 2 (Merah)
-                    if item_idx < total_items:
-                        p2 = translate(poly2_zero, xoff=curr_x, yoff=row_y)
-                        if p2.bounds[2] <= (sheet_width - margin) and p2.bounds[3] <= (sheet_length - margin) and p2.bounds[0] >= margin:
-                            placed_polygons.append((p2, 1))
-                            total_pattern_area += p2.area
-                            item_idx += 1
+                    if item_idx < total_items and p2.bounds[2] <= (sheet_width - margin) and p2.bounds[3] <= (sheet_length - margin) and p2.bounds[0] >= margin:
+                        placed_polygons.append((p2, 1))
+                        total_pattern_area += p2.area
+                        item_idx += 1
 
                     curr_x += step_x
 
