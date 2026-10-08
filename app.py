@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (Interactive Bounding Box & Offset)")
-st.caption("Penataan Berbasis Kotak dengan Kontrol Manual Offset Interaktif")
+st.title("⚡ Footwear Material Yield Visualizer (Real-time Interactive Preview)")
+st.caption("Penataan Berbasis Kotak dengan Preview Instan & Kontrol Manual Offset")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -145,12 +145,12 @@ if uploaded_file is not None:
             else:
                 pair_offset_x = 0.0
 
-            # KONTROL TAMBAHAN: SLIDER MANUAL ADJUSTMENT (OPSI 1)
+            # KONTROL TAMBAHAN: SLIDER MANUAL ADJUSTMENT (LIVE UPDATE)
             st.markdown("##### 🎛️ Penyesuaian Spasi Grid Manual (Bebas Bentuk)")
-            fine_tune_x = st.slider("Fine-tune Jarak Kolom (Step X Adjustment)", -float(bw), float(bw), 0.0, step=0.1, help="Geser minus (-) jika ingin komponen saling menyelip rapat")
-            fine_tune_y = st.slider("Fine-tune Jarak Baris (Pitch Y Adjustment)", -float(bh), float(bh), 0.0, step=0.1, help="Geser minus (-) jika ingin baris saling mendekat / overlap")
+            fine_tune_x = st.slider("Fine-tune Jarak Kolom (Step X Adjustment)", -float(bw), float(bw), 0.0, step=0.1, help="Geser minus (-) untuk merapatkan jarak horizontal antar komponen")
+            fine_tune_y = st.slider("Fine-tune Jarak Baris (Pitch Y Adjustment)", -float(bh), float(bh), 0.0, step=0.1, help="Geser minus (-) untuk merapatkan jarak vertikal antar baris")
 
-        # HITUNG GEOMETRI P1 & P2
+        # HITUNG GEOMETRI P1 & P2 UNTUK PREVIEW LIVE & RENDER
         p1 = rotate(base_poly, rot_p1, origin='center')
         p1 = translate(p1, xoff=-p1.bounds[0], yoff=-p1.bounds[1])
 
@@ -159,26 +159,32 @@ if uploaded_file is not None:
         if is_pair_cat:
             p2 = translate(p2, xoff=pair_offset_x, yoff=0.0)
 
-        # PREVIEW MASTER
-        prev_w = max(p1.bounds[2], p2.bounds[2]) + 5.0
-        prev_h = max(p1.bounds[3], p2.bounds[3]) + 5.0
+        # Jika fine_tune diubah, kita bisa aplikasikan pratinjau jarak langsung pada preview unit jika diperlukan,
+        # atau preview menampilkan unit dasar yang berinteraksi dengan gap aktif.
+        p2_preview = translate(p2, xoff=fine_tune_x, yoff=fine_tune_y) if (is_pair_cat or is_twoway_cat) else translate(p1, xoff=inter_gap_cm + fine_tune_x, yoff=0)
+
+        # PREVIEW MASTER (LANGSUNG LIVE TERUPDATE SAAT SLIDER DIGESER)
+        prev_w = max(p1.bounds[2], p2_preview.bounds[2]) + 5.0
+        prev_h = max(p1.bounds[3], p2_preview.bounds[3]) + 5.0
 
         with col_prev:
-            st.markdown("##### 👁️ Preview Master Layout")
+            st.markdown("##### 👁️ Live Preview Master Layout")
             if is_pair_cat:
                 if p1.buffer(inter_gap_cm/2).intersects(p2.buffer(inter_gap_cm/2)):
                     st.error("⚠️ Pasangan bertabrakan! Geser slider 'Jarak X Pcs 2' ke kanan.")
                 else:
                     st.success("✅ Jarak Pasangan Aman")
             else:
-                st.info(f"💡 Layout Mode: **{category.split(':')[0]}**")
+                st.info(f"💡 Layout Mode: **{category.split(':')[0]}** | Spasi Kolom/Baris: {fine_tune_x:+.1f} / {fine_tune_y:+.1f} cm")
 
-            svg_preview = generate_svg_preview_pair(p1, p2, width_cm=max(prev_w, 25), height_cm=max(prev_h, 20), show_p2=(is_pair_cat or is_twoway_cat))
+            # Preview menampilkan P1 dan P2 dengan posisi penyesuaian live
+            show_second_pcs = (is_pair_cat or is_twoway_cat)
+            svg_preview = generate_svg_preview_pair(p1, p2_preview if show_second_pcs else translate(p1, xoff=p1.bounds[2]-p1.bounds[0]+inter_gap_cm+fine_tune_x, yoff=0), width_cm=max(prev_w, 25), height_cm=max(prev_h, 20), show_p2=True)
             st.components.v1.html(svg_preview, height=280, scrolling=False)
 
         # STEP 2: DUPLIKASI BERBASIS BOUNDING BOX DENGAN FINE-TUNE OFFSET
         st.markdown("---")
-        st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
+        st.subheader("🚀 Step 2: Render Hasil Penuh ke Lembaran Bahan")
 
         if st.button("📊 Render Layout ProCost", type="primary"):
             placed_polygons = []
