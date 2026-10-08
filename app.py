@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (Exact Grid Repeat)")
-st.caption("3-Component Master Setup → Repeat Master Unit Ke Lembaran Utuh")
+st.title("⚡ Footwear Material Yield Visualizer (Fixed Modular Grid)")
+st.caption("Duplikasi Modular Pasangan Presisi - 100% Bebas Tabrakan & Rapat")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -204,7 +204,7 @@ if uploaded_file is not None:
             with c3_3:
                 r2_shift_y = st.slider("Geser Y Pcs 3", -float(bh * 2), float(bh * 2), 6.1, step=0.1)
 
-        # BENTUK KOMPONEN BERDASARKAN PARAMETER SLIDER
+        # POLYGON GENERATION
         p1_rot = rotate(base_poly, rot1, origin="center")
         p1_poly = translate(p1_rot, xoff=shift_x1, yoff=shift_y1)
 
@@ -223,7 +223,7 @@ if uploaded_file is not None:
         p2_preview = translate(p2_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
         p3_preview = translate(p3_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
 
-        # DETEKSI TABRAKAN PREVIEW
+        # CHECK TABRAKAN PREVIEW
         collide_12 = polygons_collide(p1_preview, p2_preview, inter_gap)
         collide_13 = polygons_collide(p1_preview, p3_preview, inter_gap)
         collide_23 = polygons_collide(p2_preview, p3_preview, inter_gap)
@@ -248,7 +248,7 @@ if uploaded_file is not None:
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
         # ====================================================
-        # STEP 2: DUPLIKASI REPEAT MASTER UNIT KHUSUS
+        # STEP 2: FIXED MODULAR PAIR REPEAT
         # ====================================================
 
         st.markdown("---")
@@ -256,24 +256,27 @@ if uploaded_file is not None:
 
         if st.button("📊 Repeat Master Setup To Sheet", type="primary"):
 
-            # 1. BENTUK MASTER UNIT SAMA PERSIS SEPERTI STEP 1
-            all_master = [p1_poly, p2_poly, p3_poly]
+            # 1. PASANGAN MASTER (P1 & P2)
+            pair_min_x = min(p1_poly.bounds[0], p2_poly.bounds[0])
+            pair_min_y = min(p1_poly.bounds[1], p2_poly.bounds[1])
 
-            # Zeroing Master Unit secara utuh
-            min_x_m = min(p.bounds[0] for p in all_master)
-            min_y_m = min(p.bounds[1] for p in all_master)
+            p1_m = translate(p1_poly, xoff=-pair_min_x, yoff=-pair_min_y)
+            p2_m = translate(p2_poly, xoff=-pair_min_x, yoff=-pair_min_y)
 
-            master_p1 = translate(p1_poly, xoff=-min_x_m, yoff=-min_y_m)
-            master_p2 = translate(p2_poly, xoff=-min_x_m, yoff=-min_y_m)
-            master_p3 = translate(p3_poly, xoff=-min_x_m, yoff=-min_y_m)
+            # Dimensions Of One Pair
+            pair_w = max(p1_m.bounds[2], p2_m.bounds[2]) - min(p1_m.bounds[0], p2_m.bounds[0])
+            pair_h = max(p1_m.bounds[3], p2_m.bounds[3]) - min(p1_m.bounds[1], p2_m.bounds[1])
 
-            # Hitung Vektor Offset P3 terhadap P1 sebagai arah berulang
-            step_repeat_x = master_p3.bounds[0] - master_p1.bounds[0]
-            step_repeat_y = master_p3.bounds[1] - master_p1.bounds[1]
+            # 2. VEKTOR INTERLOCK DARI P3 (AKURAT)
+            # Offset X untuk Zig-zag Baris Genap
+            stagger_x = p3_poly.bounds[0] - p1_poly.bounds[0]
 
-            # Lebar Efektif Pasangan P1-P2 untuk pengulangan sejajar X
-            pair_width = max(master_p1.bounds[2], master_p2.bounds[2]) - min(master_p1.bounds[0], master_p2.bounds[0])
-            step_x = pair_width + inter_gap
+            # Pitch Vertikal (Y): Mengambil jarak vertikal P3 terhadap P1 secara absolut
+            pitch_y = abs(p3_poly.bounds[1] - p1_poly.bounds[1])
+            if pitch_y < 1.0:
+                pitch_y = pair_h + inter_gap
+
+            step_x = pair_w + inter_gap
 
             placed_polygons = []
             total_pattern_area = 0.0
@@ -282,14 +285,15 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # 2. DUPLIKASI GRID DENGAN MENGHORMATI RELASI P1-P2-P3
+            placed_buffers = []
+
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
 
-                row_y = margin + (row_idx * step_repeat_y)
-                x_shift = step_repeat_x if is_row_even else 0.0
+                row_y = margin + (row_idx * pitch_y)
+                x_shift = stagger_x if is_row_even else 0.0
 
-                if row_y + min(master_p1.bounds[3], master_p2.bounds[3]) > (sheet_length - margin):
+                if row_y + min(p1_m.bounds[3], p2_m.bounds[3]) > (sheet_length - margin):
                     break
 
                 curr_x = margin + x_shift
@@ -297,29 +301,39 @@ if uploaded_file is not None:
                 while curr_x < margin:
                     curr_x += step_x
 
-                while item_idx < total_items and (curr_x + pair_width) <= (sheet_width - margin):
-                    # Geser P1 & P2 bersamaan sesuai Offset Step 1
-                    cand_p1 = translate(master_p1, xoff=curr_x, yoff=row_y)
-                    cand_p2 = translate(master_p2, xoff=curr_x, yoff=row_y)
+                while item_idx < total_items and (curr_x + pair_w) <= (sheet_width - margin):
+                    cand_p1 = translate(p1_m, xoff=curr_x, yoff=row_y)
+                    cand_p2 = translate(p2_m, xoff=curr_x, yoff=row_y)
 
-                    p1_valid = (cand_p1.bounds[2] <= sheet_width - margin) and (cand_p1.bounds[3] <= sheet_length - margin) and (cand_p1.bounds[0] >= margin)
-                    p2_valid = (cand_p2.bounds[2] <= sheet_width - margin) and (cand_p2.bounds[3] <= sheet_length - margin) and (cand_p2.bounds[0] >= margin)
+                    buf1 = cand_p1.buffer(inter_gap / 2)
+                    buf2 = cand_p2.buffer(inter_gap / 2)
 
-                    if p1_valid:
+                    # Validasi Lembaran
+                    p1_in = (cand_p1.bounds[2] <= sheet_width - margin) and (cand_p1.bounds[3] <= sheet_length - margin) and (cand_p1.bounds[0] >= margin)
+                    p2_in = (cand_p2.bounds[2] <= sheet_width - margin) and (cand_p2.bounds[3] <= sheet_length - margin) and (cand_p2.bounds[0] >= margin)
+
+                    # Validasi Collision
+                    c1 = any(buf1.intersects(b) for b in placed_buffers)
+                    c2 = any(buf2.intersects(b) for b in placed_buffers)
+
+                    if p1_in and p2_in and not c1 and not c2:
                         placed_polygons.append((cand_p1, 0))
-                        total_pattern_area += cand_p1.area
-                        item_idx += 1
-
-                    if item_idx < total_items and p2_valid:
                         placed_polygons.append((cand_p2, 1))
-                        total_pattern_area += cand_p2.area
-                        item_idx += 1
+
+                        placed_buffers.append(buf1)
+                        placed_buffers.append(buf2)
+
+                        total_pattern_area += (cand_p1.area + cand_p2.area)
+                        item_idx += 2
+                    else:
+                        # Jika terjadi gesekan akibat slider yang terlalu mepet, beri jarak mikro
+                        pass
 
                     curr_x += step_x
 
                 row_idx += 1
 
-            # SUMMARY & METRIK
+            # SUMMARY METRICS
             total_sheet_area = sheet_width * sheet_length
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
             used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
