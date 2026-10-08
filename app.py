@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer")
+st.title("⚡ Footwear Material Nesting")
 st.markdown("---")
 
 # ============================================================
