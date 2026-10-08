@@ -10,8 +10,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (Fixed Modular Grid)")
-st.caption("Duplikasi Modular Pasangan Presisi - 100% Bebas Tabrakan & Rapat")
+st.title("⚡ Footwear Material Yield Visualizer (Exact Grid Repeat)")
+st.caption("Master Setup Step 1 -> Duplikasi Matriks Utuh Tanpa Distorsi")
 
 # ============================================================
 # SIDEBAR PARAMETER
@@ -19,37 +19,11 @@ st.caption("Duplikasi Modular Pasangan Presisi - 100% Bebas Tabrakan & Rapat")
 
 st.sidebar.header("⚙️ Parameter Lembaran Material")
 
-sheet_width = st.sidebar.number_input(
-    "Lebar Material / Sheet Width (cm)",
-    value=140.0,
-    step=5.0
-)
-
-sheet_length = st.sidebar.number_input(
-    "Panjang Material / Sheet Length (cm)",
-    value=100.0,
-    step=5.0
-)
-
-margin = st.sidebar.number_input(
-    "Margin Pinggir / Edge Gap (cm)",
-    value=1.0,
-    step=0.5
-)
-
-inter_gap = st.sidebar.number_input(
-    "Jarak Antar Pola / Interlacing Gap (cm)",
-    value=0.1,
-    step=0.05
-)
-
-target_pairs = st.sidebar.number_input(
-    "Jumlah Pasang Target (Pairs)",
-    value=50,
-    min_value=1,
-    step=1
-)
-
+sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value=140.0, step=5.0)
+sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
+margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, step=0.5)
+inter_gap = st.sidebar.number_input("Jarak Antar Pola / Interlacing Gap (cm)", value=0.1, step=0.05)
+target_pairs = st.sidebar.number_input("Jumlah Pasang Target (Pairs)", value=50, min_value=1, step=1)
 
 # ============================================================
 # EXTRACT POLYGONS
@@ -58,11 +32,7 @@ target_pairs = st.sidebar.number_input(
 @st.cache_data
 def extract_polygons_from_bytes(file_bytes, dpi=96):
     try:
-        img = cv2.imdecode(
-            np.frombuffer(file_bytes, np.uint8),
-            cv2.IMREAD_UNCHANGED
-        )
-
+        img = cv2.imdecode(np.frombuffer(file_bytes, np.uint8), cv2.IMREAD_UNCHANGED)
         if img is None:
             return []
 
@@ -74,21 +44,8 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
             gray = img
 
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-
-        thresh = cv2.adaptiveThreshold(
-            blurred,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY_INV,
-            11,
-            2
-        )
-
-        contours, _ = cv2.findContours(
-            thresh,
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE
-        )
+        thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         pixels_per_cm = dpi / 2.54
         extracted_polygons = []
@@ -98,7 +55,6 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
 
         for cnt in contours:
             area_px = cv2.contourArea(cnt)
-
             if 300 < area_px <= max_area_px:
                 epsilon = 0.005 * cv2.arcLength(cnt, True)
                 approx = cv2.approxPolyDP(cnt, epsilon, True)
@@ -112,24 +68,15 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
                         extracted_polygons.append(poly_zeroed)
 
         return extracted_polygons
-
     except Exception:
         return []
-
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
 
 def generate_svg_3pcs_preview(p1, p2, p3, width_cm=50, height_cm=40):
     scale = 10
     svg_w = width_cm * scale
     svg_h = height_cm * scale
 
-    svg_code = f'''
-    <svg width="100%" height="auto" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg" style="background-color:#F8F9FA; border:2px dashed #666; border-radius:8px;">
-    '''
-
+    svg_code = f'<svg width="100%" height="auto" viewBox="0 0 {svg_w} {svg_h}" xmlns="http://www.w3.org/2000/svg" style="background-color:#F8F9FA; border:2px dashed #666; border-radius:8px;">'
     items = [(p1, "#3388ff"), (p2, "#ff4444"), (p3, "#28a745")]
 
     for poly, col in items:
@@ -140,21 +87,16 @@ def generate_svg_3pcs_preview(p1, p2, p3, width_cm=50, height_cm=40):
     svg_code += "</svg>"
     return svg_code
 
-
 def polygons_collide(poly_a, poly_b, gap=0.1):
     safe_a = poly_a.buffer(gap / 2)
     safe_b = poly_b.buffer(gap / 2)
     return safe_a.intersects(safe_b)
 
-
 # ============================================================
-# MAIN APP LOGIC
+# MAIN APP
 # ============================================================
 
-uploaded_file = st.file_uploader(
-    "Upload Gambar Pattern Component Master",
-    type=["png", "jpg", "jpeg"]
-)
+uploaded_file = st.file_uploader("Upload Gambar Pattern Component Master", type=["png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
@@ -167,10 +109,7 @@ if uploaded_file is not None:
         bw = base_poly.bounds[2] - base_poly.bounds[0]
         bh = base_poly.bounds[3] - base_poly.bounds[1]
 
-        # ====================================================
-        # STEP 1: OPERATOR ADJUSTMENT (3 COMPONENTS)
-        # ====================================================
-
+        # STEP 1: CONTROLS
         st.markdown("---")
         st.subheader("🛠️ Step 1: Atur Posisi Master 3 Komponen")
 
@@ -204,7 +143,7 @@ if uploaded_file is not None:
             with c3_3:
                 r2_shift_y = st.slider("Geser Y Pcs 3", -float(bh * 2), float(bh * 2), 6.1, step=0.1)
 
-        # POLYGON GENERATION
+        # GEOMETRI REAL-TIME DARI SLIDER
         p1_rot = rotate(base_poly, rot1, origin="center")
         p1_poly = translate(p1_rot, xoff=shift_x1, yoff=shift_y1)
 
@@ -214,7 +153,7 @@ if uploaded_file is not None:
         p3_rot = rotate(base_poly, rot3, origin="center")
         p3_poly = translate(p3_rot, xoff=r2_shift_x, yoff=r2_shift_y)
 
-        # PREVIEW NORMALIZATION
+        # PREVIEW PRESERVATION
         min_canvas_x = min(p1_poly.bounds[0], p2_poly.bounds[0], p3_poly.bounds[0])
         min_canvas_y = min(p1_poly.bounds[1], p2_poly.bounds[1], p3_poly.bounds[1])
 
@@ -223,7 +162,6 @@ if uploaded_file is not None:
         p2_preview = translate(p2_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
         p3_preview = translate(p3_poly, xoff=-min_canvas_x + pad, yoff=-min_canvas_y + pad)
 
-        # CHECK TABRAKAN PREVIEW
         collide_12 = polygons_collide(p1_preview, p2_preview, inter_gap)
         collide_13 = polygons_collide(p1_preview, p3_preview, inter_gap)
         collide_23 = polygons_collide(p2_preview, p3_preview, inter_gap)
@@ -238,45 +176,29 @@ if uploaded_file is not None:
             pw = max(p1_preview.bounds[2], p2_preview.bounds[2], p3_preview.bounds[2]) + pad
             ph = max(p1_preview.bounds[3], p2_preview.bounds[3], p3_preview.bounds[3]) + pad
 
-            svg_3pcs = generate_svg_3pcs_preview(
-                p1_preview,
-                p2_preview,
-                p3_preview,
-                width_cm=max(pw, 25),
-                height_cm=max(ph, 25)
-            )
+            svg_3pcs = generate_svg_3pcs_preview(p1_preview, p2_preview, p3_preview, width_cm=max(pw, 25), height_cm=max(ph, 25))
             st.components.v1.html(svg_3pcs, height=380, scrolling=False)
 
-        # ====================================================
-        # STEP 2: FIXED MODULAR PAIR REPEAT (EXACT STEP 1 Y-OFFSET)
-        # ====================================================
-
+        # STEP 2: DUPLIKASI MURNI MATRIKS
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
         if st.button("📊 Repeat Master Setup To Sheet", type="primary"):
 
-            # 1. NORMALISASI PASANGAN MASTER (P1 & P2) KE ORIGIN (0,0)
+            # ZEROING BASE PAIR (P1 & P2)
             pair_min_x = min(p1_poly.bounds[0], p2_poly.bounds[0])
             pair_min_y = min(p1_poly.bounds[1], p2_poly.bounds[1])
 
             p1_m = translate(p1_poly, xoff=-pair_min_x, yoff=-pair_min_y)
             p2_m = translate(p2_poly, xoff=-pair_min_x, yoff=-pair_min_y)
 
-            # Lebar Efektif Pasangan P1 + P2
+            # LEBAR EFFECTIVE PAIR HORIZONTAL
             pair_w = max(p1_m.bounds[2], p2_m.bounds[2]) - min(p1_m.bounds[0], p2_m.bounds[0])
             step_x = pair_w + inter_gap
 
-            # 2. VEKTOR PERGESERAN MURNI DARI KOMPONEN 3 (HIJAU) KE KOMPONEN 1 (BIRU)
-            # Selisih X untuk Zig-Zag Baris Genap
+            # VEKTOR OFFSET MURNI DARI P3 KHUSUS DARI SLIDER
             stagger_x = p3_poly.bounds[0] - p1_poly.bounds[0]
-
-            # Selisih Y Murni dari Slider Pcs 3 (Bisa Rapat Menyeliap)
             pitch_y = p3_poly.bounds[1] - p1_poly.bounds[1]
-            
-            # Jika Y Komponen 3 diatur mendekati 0 atau negatif, gunakan batas minimum jarak aman
-            if pitch_y <= 0:
-                pitch_y = (max(p1_m.bounds[3], p2_m.bounds[3]) - min(p1_m.bounds[1], p2_m.bounds[1])) * 0.6
 
             placed_polygons = []
             total_pattern_area = 0.0
@@ -285,12 +207,10 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            placed_buffers = []
-
             while item_idx < total_items:
                 is_row_even = (row_idx % 2 == 1)
 
-                # Jarak Y murni mengikuti offset Pcs 3 dari Step 1
+                # POSISI Y MURNI DARI PITCH P3 DITAMBAHKAN TANPA PENETRASI/PENOLAKAN
                 row_y = margin + (row_idx * pitch_y)
                 x_shift = stagger_x if is_row_even else 0.0
 
@@ -306,32 +226,25 @@ if uploaded_file is not None:
                     cand_p1 = translate(p1_m, xoff=curr_x, yoff=row_y)
                     cand_p2 = translate(p2_m, xoff=curr_x, yoff=row_y)
 
-                    buf1 = cand_p1.buffer(inter_gap / 2)
-                    buf2 = cand_p2.buffer(inter_gap / 2)
-
-                    # Validasi Margin Sheet
+                    # HANYA BANYAKNYA UKURAN SHEET YANG DISETIAI
                     p1_in = (cand_p1.bounds[2] <= sheet_width - margin) and (cand_p1.bounds[3] <= sheet_length - margin) and (cand_p1.bounds[0] >= margin)
                     p2_in = (cand_p2.bounds[2] <= sheet_width - margin) and (cand_p2.bounds[3] <= sheet_length - margin) and (cand_p2.bounds[0] >= margin)
 
-                    # Validasi Collision
-                    c1 = any(buf1.intersects(b) for b in placed_buffers)
-                    c2 = any(buf2.intersects(b) for b in placed_buffers)
-
-                    if p1_in and p2_in and not c1 and not c2:
+                    if p1_in:
                         placed_polygons.append((cand_p1, 0))
+                        total_pattern_area += cand_p1.area
+                        item_idx += 1
+
+                    if item_idx < total_items and p2_in:
                         placed_polygons.append((cand_p2, 1))
-
-                        placed_buffers.append(buf1)
-                        placed_buffers.append(buf2)
-
-                        total_pattern_area += (cand_p1.area + cand_p2.area)
-                        item_idx += 2
+                        total_pattern_area += cand_p2.area
+                        item_idx += 1
 
                     curr_x += step_x
 
                 row_idx += 1
 
-            # SUMMARY METRICS
+            # SUMMARY & METRICS
             total_sheet_area = sheet_width * sheet_length
             max_used_y = max([p.bounds[3] for p, _ in placed_polygons]) if placed_polygons else 0.0
             used_sheet_area = sheet_width * max_used_y if max_used_y > 0 else total_sheet_area
