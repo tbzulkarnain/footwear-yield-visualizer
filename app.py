@@ -10,22 +10,20 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚡ Footwear Material Yield Visualizer (Dynamic 6 ProCost Categories)")
-st.caption("Kategori Layout ProCost Berbeda Sesuai Aturan Masing-Masing")
+st.title("⚡ Footwear Material Yield Visualizer (Contour-Based ProCost Grid)")
+st.caption("Penataan Jarak Presisi Berdasarkan Garis Tepi Kontur Poligon Asli")
 
 # ============================================================
 # SIDEBAR PARAMETER
 # ============================================================
 
-st.sidebar.header("⚙️ Parameter Lembaran Material")
-
 sheet_width = st.sidebar.number_input("Lebar Material / Sheet Width (cm)", value=140.0, step=5.0)
 sheet_length = st.sidebar.number_input("Panjang Material / Sheet Length (cm)", value=100.0, step=5.0)
 margin = st.sidebar.number_input("Margin Pinggir / Edge Gap (cm)", value=1.0, step=0.5)
 
-# Input gap antar komponen dalam satuan milimeter (mm) standar ProCost
-inter_gap_mm = st.sidebar.number_input("Gap Antar Komponen / Pisau (mm)", value=2.0, min_value=0.0, max_value=20.0, step=0.5)
-inter_gap = inter_gap_mm / 10.0  # Konversi ke cm untuk perhitungan geometri
+# Input gap antar kontur dalam milimeter (mm)
+inter_gap_mm = st.sidebar.number_input("Gap Antar Kontur / Pisau (mm)", value=2.0, min_value=0.0, max_value=20.0, step=0.5)
+inter_gap_cm = inter_gap_mm / 10.0  # Konversi ke cm
 
 target_pairs = st.sidebar.number_input("Jumlah Pasang Target (Pairs)", value=50, min_value=1, step=1)
 
@@ -163,17 +161,18 @@ if uploaded_file is not None:
         with col_prev:
             st.markdown("##### 👁️ Preview Master Layout")
             if is_pair_cat:
-                if p1.buffer(inter_gap/2).intersects(p2.buffer(inter_gap/2)):
-                    st.error("⚠️ Pasangan bertabrakan! Geser slider 'Jarak X Pcs 2' ke kanan.")
+                # Validasi tabrakan berbasis kontur asli dengan buffer gap
+                if p1.buffer(inter_gap_cm/2).intersects(p2.buffer(inter_gap_cm/2)):
+                    st.error("⚠️ Kontur pasangan bertabrakan! Geser slider 'Jarak X Pcs 2' ke kanan.")
                 else:
-                    st.success("✅ Jarak Pasangan Aman")
+                    st.success("✅ Jarak Antar Kontur Aman")
             else:
                 st.info(f"💡 Layout Mode: **{category.split(':')[0]}**")
 
             svg_preview = generate_svg_preview_pair(p1, p2, width_cm=max(prev_w, 25), height_cm=max(prev_h, 20), show_p2=(is_pair_cat or is_twoway_cat))
             st.components.v1.html(svg_preview, height=280, scrolling=False)
 
-        # STEP 2: DUPLIKASI SPESIFIK SESUAI KATEGORI
+        # STEP 2: DUPLIKASI SPESIFIK BERDASARKAN KONTUR
         st.markdown("---")
         st.subheader("🚀 Step 2: Duplikasi Ke Lembaran Utuh")
 
@@ -185,22 +184,18 @@ if uploaded_file is not None:
             item_idx = 0
             row_idx = 0
 
-            # ----------------------------------------------------
-            # ATURAN MINGGIR & PITCH BERDASARKAN KATEGORI
-            # ----------------------------------------------------
-
+            # Penentuan step grid berdasarkan lebar/tinggi bounding kontur ditambah gap kontur
             if "Category 1" in category:
-                # 1-Way Straight: Murni P1 berurutan
-                step_x = p1.bounds[2] + inter_gap
-                pitch_y = p1.bounds[3] + inter_gap
+                step_x = (p1.bounds[2] - p1.bounds[0]) + inter_gap_cm
+                pitch_y = (p1.bounds[3] - p1.bounds[1]) + inter_gap_cm
                 
                 while item_idx < total_items:
                     row_y = margin + (row_idx * pitch_y)
-                    if row_y + p1.bounds[3] > (sheet_length - margin):
+                    if row_y + (p1.bounds[3] - p1.bounds[1]) > (sheet_length - margin):
                         break
                     
                     curr_x = margin
-                    while item_idx < total_items and (curr_x + p1.bounds[2]) <= (sheet_width - margin):
+                    while item_idx < total_items and (curr_x + (p1.bounds[2] - p1.bounds[0])) <= (sheet_width - margin):
                         cand = translate(p1, xoff=curr_x, yoff=row_y)
                         placed_polygons.append((cand, 0))
                         total_pattern_area += cand.area
@@ -210,14 +205,14 @@ if uploaded_file is not None:
                     row_idx += 1
 
             elif "Category 2" in category:
-                # 2-Way Interlock: P1 (0°) & P2 (180°) Selang-Seling Horizontal
                 w_unit = max(p1.bounds[2], p2.bounds[2])
-                step_x = w_unit + inter_gap
-                pitch_y = max(p1.bounds[3], p2.bounds[3]) + inter_gap
+                h_unit = max(p1.bounds[3], p2.bounds[3])
+                step_x = w_unit + inter_gap_cm
+                pitch_y = h_unit + inter_gap_cm
 
                 while item_idx < total_items:
                     row_y = margin + (row_idx * pitch_y)
-                    if row_y + max(p1.bounds[3], p2.bounds[3]) > (sheet_length - margin):
+                    if row_y + h_unit > (sheet_length - margin):
                         break
                     
                     curr_x = margin
@@ -235,15 +230,14 @@ if uploaded_file is not None:
                     row_idx += 1
 
             elif "Category 3" in category:
-                # 1-Way Staggered: P1 Murni dengan Baris Genap Geser Horizontal
-                step_x = p1.bounds[2] + inter_gap
-                pitch_y = p1.bounds[3] + inter_gap
+                step_x = (p1.bounds[2] - p1.bounds[0]) + inter_gap_cm
+                pitch_y = (p1.bounds[3] - p1.bounds[1]) + inter_gap_cm
                 stagger_x = step_x / 2
 
                 while item_idx < total_items:
                     is_row_even = (row_idx % 2 == 1)
                     row_y = margin + (row_idx * pitch_y)
-                    if row_y + p1.bounds[3] > (sheet_length - margin):
+                    if row_y + (p1.bounds[3] - p1.bounds[1]) > (sheet_length - margin):
                         break
                     
                     row_start_x = margin + (stagger_x if is_row_even else 0.0)
@@ -252,7 +246,7 @@ if uploaded_file is not None:
 
                     curr_x = row_start_x
                     while item_idx < total_items and curr_x <= (sheet_width - margin):
-                        if curr_x >= margin and (curr_x + p1.bounds[2]) <= (sheet_width - margin):
+                        if curr_x >= margin and (curr_x + (p1.bounds[2] - p1.bounds[0])) <= (sheet_width - margin):
                             cand = translate(p1, xoff=curr_x, yoff=row_y)
                             placed_polygons.append((cand, 0))
                             total_pattern_area += cand.area
@@ -262,16 +256,16 @@ if uploaded_file is not None:
                     row_idx += 1
 
             elif "Category 4" in category:
-                # 2-Way Staggered: P1 & P2 Selang-seling + Baris Genap Geser Horizontal
                 w_unit = max(p1.bounds[2], p2.bounds[2])
-                step_x = w_unit + inter_gap
-                pitch_y = max(p1.bounds[3], p2.bounds[3]) + inter_gap
+                h_unit = max(p1.bounds[3], p2.bounds[3])
+                step_x = w_unit + inter_gap_cm
+                pitch_y = h_unit + inter_gap_cm
                 stagger_x = step_x / 2
 
                 while item_idx < total_items:
                     is_row_even = (row_idx % 2 == 1)
                     row_y = margin + (row_idx * pitch_y)
-                    if row_y + max(p1.bounds[3], p2.bounds[3]) > (sheet_length - margin):
+                    if row_y + h_unit > (sheet_length - margin):
                         break
                     
                     row_start_x = margin + (stagger_x if is_row_even else 0.0)
@@ -294,12 +288,12 @@ if uploaded_file is not None:
                     row_idx += 1
 
             else:
-                # Category 5 & 6: Pair Unit (Blok Pasangan P1 + P2)
+                # Category 5 & 6: Pair Unit dengan Jarak Tepi Kontur
                 pair_width = max(p1.bounds[2], p2.bounds[2])
                 pair_height = max(p1.bounds[3], p2.bounds[3])
 
-                step_x = pair_width + inter_gap
-                pitch_y = pair_height + inter_gap
+                step_x = pair_width + inter_gap_cm
+                pitch_y = pair_height + inter_gap_cm
                 stagger_x = (step_x / 2) if "Category 6" in category else 0.0
 
                 while item_idx < total_items:
