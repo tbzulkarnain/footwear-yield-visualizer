@@ -4,7 +4,7 @@ from PIL import Image
 from shapely.geometry import Polygon
 from shapely.affinity import translate, rotate
 import streamlit as st
-from streamlit_drawable_canvas import st_canvas
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide"
@@ -52,7 +52,7 @@ input_method = st.radio(
     "Pilih Cara Input Pola:",
     (
         "Upload Gambar Pola (File)",
-        "Gambar di Kanvas Interaktif (Drawable Canvas)",
+        "Gambar di Kanvas Interaktif (HTML5 Multi-Tool)",
     ),
     horizontal=True,
 )
@@ -67,67 +67,208 @@ if input_method == "Upload Gambar Pola (File)":
     file_bytes = uploaded_file.read()
 
 else:
-  st.info(
-      "💡 **Panduan Menggambar Pola:**\n"
-      "1. Pilih **Mode Alat Kanvas** (Freedraw, Line, Rect, Circle, atau"
-      " Polygon) di bawah.\n"
-      "2. Gambar bentuk komponen sepatu pada area putih (pastikan garis"
-      " tertutup rapat).\n"
-      "3. Klik tombol **📥 Gunakan & Simpan Gambar Kanvas** di bawah untuk"
-      " langsung memasukkannya ke sistem nesting."
+  st.markdown(
+      "💡 **Panduan Kanvas:** Pilih alat gambar (*Pencil, Line, Rect, Circle,"
+      " Polygon, atau Eraser*), buat bentuk komponen sepatu tertutup rapat,"
+      " klik **'Download Gambar Kanvas'**, lalu unggah hasilnya di bawah atau"
+      " ganti ke menu upload file."
   )
 
-  col_c1, col_c2, col_c3 = st.columns(3)
-  with col_c1:
-    canvas_mode = st.selectbox(
-        "Mode Alat Kanvas", ("freedraw", "line", "rect", "circle", "polygon")
-    )
-  with col_c2:
-    stroke_width = st.slider("Ketebalan Garis", 1, 15, 3)
-  with col_c3:
-    stroke_color = st.color_picker("Warna Garis", "#000000")
+  # Komponen Custom HTML5 Canvas Lengkap dengan Polygon & Tombol Download
+  canvas_html = """
+    <div style="font-family: sans-serif; background: #f9f9f9; padding: 12px; border-radius: 8px; width: fit-content;">
+        <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <label style="font-size: 13px; font-weight: bold; color: #333;">Tool:</label>
+            <select id="toolSelect" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-weight: bold;">
+                <option value="pencil">✏️ Freehand Pencil</option>
+                <option value="line">📏 Straight Line</option>
+                <option value="rect">⬛ Rectangle / Box</option>
+                <option value="circle">⭕ Circle / Oval</option>
+                <option value="polygon">📐 Polygon (Multi-click & Double Click to close)</option>
+                <option value="eraser">🧹 Eraser</option>
+            </select>
 
-  # Render Drawable Canvas
-  canvas_result = st_canvas(
-      fill_color="rgba(0, 131, 184, 0.2)",
-      stroke_width=stroke_width,
-      stroke_color=stroke_color,
-      background_color="#FFFFFF",
-      update_streamlit=True,
-      height=400,
-      width=700,
-      drawing_mode=canvas_mode,
-      key="drawable_canvas_sepatu",
+            <label style="font-size: 13px; font-weight: bold; color: #333; margin-left: 10px;">Size:</label>
+            <input type="range" id="brushSize" min="1" max="15" value="4" style="width: 80px;">
+
+            <button id="clearBtn" style="padding: 6px 14px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-left: 10px;">Clear</button>
+            
+            <a id="downloadLink" download="pola_sepatu_kanvas.png" style="margin-left: auto;">
+                <button id="downloadBtn" style="padding: 6px 14px; background-color: #0083B8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📥 Download Gambar Kanvas</button>
+            </a>
+        </div>
+        <canvas id="paintCanvas" width="700" height="400" style="border:2px solid #ccc; background-color:#ffffff; cursor:crosshair; border-radius: 6px; display: block;"></canvas>
+        <div id="instruction" style="font-size: 12px; color: #555; margin-top: 6px; font-weight: 500;">Mode: Freehand Pencil - Klik dan seret untuk menggambar.</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('paintCanvas');
+        const ctx = canvas.getContext('2d');
+        let painting = false;
+        let startX, startY;
+        let snapshot;
+
+        // Polygon variables
+        let polyPoints = [];
+        let isDrawingPolygon = false;
+
+        // Set background putih awal agar tidak transparan
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const toolSelect = document.getElementById('toolSelect');
+        const brushSize = document.getElementById('brushSize');
+        const instruction = document.getElementById('instruction');
+
+        toolSelect.addEventListener('change', function() {
+            const val = this.value;
+            if(val === 'pencil') instruction.innerText = "Mode: Freehand Pencil - Klik dan seret untuk menggambar bebas.";
+            else if(val === 'line') instruction.innerText = "Mode: Straight Line - Klik, tarik, dan lepas untuk garis lurus.";
+            else if(val === 'rect') instruction.innerText = "Mode: Rectangle - Klik, tarik, dan lepas untuk kotak.";
+            else if(val === 'circle') instruction.innerText = "Mode: Circle - Klik, tarik, dan lepas untuk lingkaran.";
+            else if(val === 'polygon') instruction.innerText = "Mode: Polygon - Klik titik-titik sudut berurutan. Klik dua kali (Double-click) untuk menutup bentuk.";
+            else if(val === 'eraser') instruction.innerText = "Mode: Eraser - Seret untuk menghapus coretan.";
+            polyPoints = [];
+            isDrawingPolygon = false;
+        });
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const pos = getMousePos(e);
+            const currentTool = toolSelect.value;
+
+            if (currentTool === 'polygon') {
+                if (!isDrawingPolygon) {
+                    isDrawingPolygon = true;
+                    polyPoints = [];
+                    snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                }
+                polyPoints.push(pos);
+                
+                // Gambar titik sudut penanda
+                ctx.fillStyle = '#0083B8';
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 3, 0, 2 * Math.PI);
+                ctx.fill();
+
+                if (polyPoints.length > 1) {
+                    ctx.lineWidth = parseInt(brushSize.value);
+                    ctx.strokeStyle = '#000000';
+                    ctx.beginPath();
+                    ctx.moveTo(polyPoints[polyPoints.length - 2].x, polyPoints[polyPoints.length - 2].y);
+                    ctx.lineTo(pos.x, pos.y);
+                    ctx.stroke();
+                }
+                return;
+            }
+
+            startX = pos.x;
+            startY = pos.y;
+            painting = true;
+            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            if (currentTool === 'pencil' || currentTool === 'eraser') {
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+            }
+        });
+
+        // Event Double Click untuk menutup Polygon
+        canvas.addEventListener('dblclick', (e) => {
+            if (toolSelect.value === 'polygon' && isDrawingPolygon && polyPoints.length > 2) {
+                ctx.beginPath();
+                ctx.moveTo(polyPoints[polyPoints.length - 1].x, polyPoints[polyPoints.length - 1].y);
+                ctx.lineTo(polyPoints[0].x, polyPoints[0].y);
+                ctx.lineWidth = parseInt(brushSize.value);
+                ctx.strokeStyle = '#000000';
+                ctx.stroke();
+
+                isDrawingPolygon = false;
+                polyPoints = [];
+                updateDownloadLink();
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!painting) return;
+            const pos = getMousePos(e);
+            const currentTool = toolSelect.value;
+            const size = parseInt(brushSize.value);
+
+            if (currentTool === 'pencil') {
+                ctx.lineWidth = size;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = '#000000';
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+            } else if (currentTool === 'eraser') {
+                ctx.lineWidth = size * 3;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+            } else if (currentTool === 'line' || currentTool === 'rect' || currentTool === 'circle') {
+                ctx.putImageData(snapshot, 0, 0);
+                ctx.lineWidth = size;
+                ctx.strokeStyle = '#000000';
+
+                if (currentTool === 'line') {
+                    ctx.beginPath();
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(pos.x, pos.y);
+                    ctx.stroke();
+                } else if (currentTool === 'rect') {
+                    let w = pos.x - startX;
+                    let h = pos.y - startY;
+                    ctx.strokeRect(startX, startY, w, h);
+                } else if (currentTool === 'circle') {
+                    let radius = Math.sqrt(Math.pow(pos.x - startX, 2) + Math.pow(pos.y - startY, 2));
+                    ctx.beginPath();
+                    ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
+                    ctx.stroke();
+                }
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (!painting) return;
+            painting = false;
+            updateDownloadLink();
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            polyPoints = [];
+            isDrawingPolygon = false;
+            updateDownloadLink();
+        });
+
+        function updateDownloadLink() {
+            const dataURL = canvas.toDataURL('image/png');
+            document.getElementById('downloadLink').href = dataURL;
+        }
+
+        updateDownloadLink();
+    </script>
+    """
+
+  components.html(canvas_html, height=480)
+
+  st.markdown("---")
+  uploaded_file = st.file_uploader(
+      "📁 Unggah File PNG Hasil Download Kanvas di Atas",
+      type=["png", "jpg", "jpeg"],
   )
-
-  # Tombol aksi untuk memproses gambar dari kanvas secara instan
-  if canvas_result.image_data is not None:
-    img_arr = canvas_result.image_data.astype(np.uint8)
-    success, encoded = cv2.imencode(".png", img_arr)
-    if success:
-      canvas_bytes = encoded.tobytes()
-
-      col_b1, col_b2 = st.columns([1, 2])
-      with col_b1:
-        if st.button(
-            "📥 Gunakan & Simpan Gambar Kanvas",
-            type="primary",
-            use_container_width=True,
-        ):
-          st.session_state["canvas_saved_bytes"] = canvas_bytes
-          st.success("✅ Gambar berhasil dikunci ke sistem nesting!")
-      with col_b2:
-        st.download_button(
-            label="💾 Download File PNG Hasil Kanvas",
-            data=canvas_bytes,
-            file_name="pola_sepatu_kanvas.png",
-            mime="image/png",
-            use_container_width=True,
-        )
-
-  # Ambil byte dari session jika sudah dikonfirmasi
-  if "canvas_saved_bytes" in st.session_state:
-    file_bytes = st.session_state["canvas_saved_bytes"]
+  if uploaded_file is not None:
+    file_bytes = uploaded_file.read()
 
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE
@@ -217,7 +358,7 @@ def generate_svg_preview_grid(items_with_color, width_cm=60, height_cm=40):
 
 
 # ============================================================
-# MAIN APP LOGIC (JIKA FILE ATAU KANVAS TERSEDIA)
+# MAIN APP LOGIC (JIKA FILE TERSEDIA)
 # ============================================================
 
 if file_bytes is not None:
