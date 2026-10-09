@@ -69,8 +69,8 @@ if input_method == "Upload Gambar Pola (File)":
 
 else:
   st.markdown(
-      "Gunakan kanvas di bawah untuk menggambar bentuk komponen sepatu, lalu"
-      " pastikan gambar terlihat jelas:"
+      "Gunakan kanvas di bawah untuk menggambar bentuk komponen sepatu (buat"
+      " bentuk tertutup agar kontur terbaca dengan baik):"
   )
 
   col_c1, col_c2, col_c3 = st.columns(3)
@@ -84,7 +84,7 @@ else:
   with col_c3:
     canvas_stroke_color = st.color_picker("Warna Garis", "#000000")
 
-  # Komponen St Canvas standar yang aman dari TypeError
+  # Kanvas menggunakan json_data agar aman dari RuntimeError image_data
   canvas_result = st_canvas(
       fill_color="rgba(51, 136, 255, 0.3)",
       stroke_width=canvas_stroke_width,
@@ -97,16 +97,37 @@ else:
       key="canvas_pola_sepatu",
   )
 
-  # Ambil data gambar langsung dari canvas_result.image_data jika tersedia
-  if canvas_result.image_data is not None:
-    img_data = canvas_result.image_data.astype(np.uint8)
+  # Konversi objek json dari canvas ke gambar biner OpenCV secara aman
+  if canvas_result.json_data is not None and len(canvas_result.json_data.get("objects", [])) > 0:
+    canvas_img = np.ones((400, 700, 3), dtype=np.uint8) * 255
 
-    if img_data.shape[2] == 4:
-      img_bgr = cv2.cvtColor(img_data, cv2.COLOR_RGBA2BGR)
-    else:
-      img_bgr = img_data
+    for obj in canvas_result.json_data.get("objects", []):
+      obj_type = obj.get("type")
+      if obj_type == "rect":
+        left = int(obj.get("left", 0))
+        top = int(obj.get("top", 0))
+        w = int(obj.get("width", 0) * obj.get("scaleX", 1))
+        h = int(obj.get("height", 0) * obj.get("scaleY", 1))
+        cv2.rectangle(canvas_img, (left, top), (left + w, top + h), (0, 0, 0), -1)
+      elif obj_type == "circle":
+        cx = int(obj.get("left", 0) + obj.get("radius", 0))
+        cy = int(obj.get("top", 0) + obj.get("radius", 0))
+        r = int(obj.get("radius", 0) * max(obj.get("scaleX", 1), obj.get("scaleY", 1)))
+        cv2.circle(canvas_img, (cx, cy), r, (0, 0, 0), -1)
+      elif obj_type in ["polygon", "path"]:
+        points = obj.get("points") or obj.get("path")
+        if points:
+          pts = []
+          for p in points:
+            if isinstance(p, list) and len(p) >= 3:
+              pts.append([int(p[1]), int(p[2])])
+            elif isinstance(p, dict):
+              pts.append([int(p.get("x", 0)), int(p.get("y", 0))])
+          if len(pts) > 2:
+            pts_np = np.array(pts, dtype=np.int32)
+            cv2.fillPoly(canvas_img, [pts_np], (0, 0, 0))
 
-    success, encoded_img = cv2.imencode(".png", img_bgr)
+    success, encoded_img = cv2.imencode(".png", canvas_img)
     if success:
       file_bytes = encoded_img.tobytes()
 
