@@ -77,9 +77,10 @@ else:
   # Komponen Custom HTML5 Canvas murni yang aman dari error pustaka luar
   canvas_html = """
     <div>
-        <div style="margin-bottom: 8px;">
-            <button id="clearBtn" style="padding: 6px 12px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Clear Canvas</button>
-            <span style="margin-left: 10px; font-size: 14px; color: #555;">(Gambar bentuk komponen dengan garis hitam tebal yang tertutup rapat)</span>
+        <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+            <button id="clearBtn" style="padding: 6px 14px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Clear Canvas</button>
+            <button id="sendBtn" style="padding: 6px 14px; background-color: #0083B8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🚀 Gunakan Gambar Kanvas Ini</button>
+            <span id="statusTxt" style="font-size: 13px; color: #555; margin-left: 5px;">(Gambar bentuk komponen dengan garis hitam tertutup)</span>
         </div>
         <canvas id="paintCanvas" width="700" height="400" style="border:2px solid #ccc; background-color:#ffffff; cursor:crosshair; border-radius: 6px;"></canvas>
     </div>
@@ -89,7 +90,7 @@ else:
         const ctx = canvas.getContext('2d');
         let painting = false;
 
-        // Set background putih awal agar tidak transparan
+        // Set background putih awal
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -101,7 +102,6 @@ else:
         function finishedPosition() {
             painting = false;
             ctx.beginPath();
-            sendDataToStreamlit();
         }
 
         function draw(e) {
@@ -120,51 +120,23 @@ else:
             ctx.moveTo(x, y);
         }
 
-        // Support Touch untuk HP / Tablet
-        function startTouch(e) {
-            painting = true;
-            drawTouch(e);
-            e.preventDefault();
-        }
-
-        function drawTouch(e) {
-            if (!painting) return;
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = '#000000';
-
-            const rect = canvas.getBoundingClientRect();
-            const touch = e.touches[0];
-            const x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
-
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            e.preventDefault();
-        }
-
         canvas.addEventListener('mousedown', startPosition);
         canvas.addEventListener('mouseup', finishedPosition);
         canvas.addEventListener('mousemove', draw);
 
-        canvas.addEventListener('touchstart', startTouch);
-        canvas.addEventListener('touchend', finishedPosition);
-        canvas.addEventListener('touchmove', drawTouch);
-
         document.getElementById('clearBtn').addEventListener('click', function() {
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            sendDataToStreamlit();
+            document.getElementById('statusTxt').innerText = "Canvas dibersihkan.";
         });
 
-        function sendDataToStreamlit() {
+        document.getElementById('sendBtn').addEventListener('click', function() {
             const dataURL = canvas.toDataURL('image/png');
-            // Kirim data base64 ke Streamlit component communication
+            // Kirim data base64 ke Streamlit
             const payload = {type: 'canvas_image', data: dataURL};
             window.parent.postMessage(payload, '*');
-        }
+            document.getElementById('statusTxt').innerText = "✅ Gambar dikirim! Silakan cek proses nesting di bawah.";
+        });
     </script>
     """
 
