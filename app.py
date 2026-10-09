@@ -67,17 +67,14 @@ if input_method == "Upload Gambar Pola (File)":
     file_bytes = uploaded_file.read()
 
 else:
-  # PANDUAN UTAMA YANG SELALU MUNCUL JELAS
   st.info(
       "💡 **Panduan Menggambar Pola:**\n"
       "1. Pilih **Mode Alat Kanvas** (Freedraw, Line, Rect, Circle, atau"
       " Polygon) di bawah.\n"
       "2. Gambar bentuk komponen sepatu pada area putih (pastikan garis"
       " tertutup rapat).\n"
-      "3. Jika gambar sudah selesai, klik tombol **📥 Download Gambar"
-      " Kanvas**.\n"
-      "4. Unggah file hasil download tersebut ke menu **'Upload Gambar Pola"
-      " (File)'** di atas untuk langsung diproses nesting."
+      "3. Klik tombol **📥 Gunakan & Simpan Gambar Kanvas** di bawah untuk"
+      " langsung memasukkannya ke sistem nesting."
   )
 
   col_c1, col_c2, col_c3 = st.columns(3)
@@ -90,7 +87,7 @@ else:
   with col_c3:
     stroke_color = st.color_picker("Warna Garis", "#000000")
 
-  # Render Drawable Canvas tanpa mode transform yang bermasalah
+  # Render Drawable Canvas
   canvas_result = st_canvas(
       fill_color="rgba(0, 131, 184, 0.2)",
       stroke_width=stroke_width,
@@ -103,29 +100,34 @@ else:
       key="drawable_canvas_sepatu",
   )
 
-  # Ambil data gambar dari kanvas jika ada coretan objek
-  if canvas_result.json_data is not None and len(
-      canvas_result.json_data["objects"]
-  ) > 0:
-    try:
-      if hasattr(canvas_result, "image_data") and canvas_result.image_data is not None:
-        img_arr = canvas_result.image_data.astype(np.uint8)
-        success, encoded = cv2.imencode(".png", img_arr)
-        if success:
-          file_bytes = encoded.tobytes()
-          st.success(
-              "✅ Coretan terdeteksi oleh sistem! (Anda juga bisa mendownload"
-              " gambar kanvas di bawah jika diperlukan)."
-          )
-    except Exception:
-      pass
+  # Tombol aksi untuk memproses gambar dari kanvas secara instan
+  if canvas_result.image_data is not None:
+    img_arr = canvas_result.image_data.astype(np.uint8)
+    success, encoded = cv2.imencode(".png", img_arr)
+    if success:
+      canvas_bytes = encoded.tobytes()
 
-  # Tombol Download Langsung untuk Hasil Kanvas (DataURL via komponen HTML pendukung)
-  if canvas_result.json_data is not None and len(
-      canvas_result.json_data["objects"]
-  ) > 0:
-    # Ekstraksi gambar via base64 download helper
-    pass
+      col_b1, col_b2 = st.columns([1, 2])
+      with col_b1:
+        if st.button(
+            "📥 Gunakan & Simpan Gambar Kanvas",
+            type="primary",
+            use_container_width=True,
+        ):
+          st.session_state["canvas_saved_bytes"] = canvas_bytes
+          st.success("✅ Gambar berhasil dikunci ke sistem nesting!")
+      with col_b2:
+        st.download_button(
+            label="💾 Download File PNG Hasil Kanvas",
+            data=canvas_bytes,
+            file_name="pola_sepatu_kanvas.png",
+            mime="image/png",
+            use_container_width=True,
+        )
+
+  # Ambil byte dari session jika sudah dikonfirmasi
+  if "canvas_saved_bytes" in st.session_state:
+    file_bytes = st.session_state["canvas_saved_bytes"]
 
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE
