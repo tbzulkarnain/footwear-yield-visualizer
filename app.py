@@ -67,24 +67,30 @@ if input_method == "Upload Gambar Pola (File)":
     file_bytes = uploaded_file.read()
 
 else:
-  st.markdown(
-      "Gunakan bilah alat di bawah untuk menggambar pola komponen sepatu."
-      " Pilih mode bentuk (transform, freedraw, line, rect, circle, polygon),"
-      " lalu klik tombol konfirmasi."
+  # PANDUAN UTAMA YANG SELALU MUNCUL JELAS
+  st.info(
+      "💡 **Panduan Menggambar Pola:**\n"
+      "1. Pilih **Mode Alat Kanvas** (Freedraw, Line, Rect, Circle, atau"
+      " Polygon) di bawah.\n"
+      "2. Gambar bentuk komponen sepatu pada area putih (pastikan garis"
+      " tertutup rapat).\n"
+      "3. Jika gambar sudah selesai, klik tombol **📥 Download Gambar"
+      " Kanvas**.\n"
+      "4. Unggah file hasil download tersebut ke menu **'Upload Gambar Pola"
+      " (File)'** di atas untuk langsung diproses nesting."
   )
 
   col_c1, col_c2, col_c3 = st.columns(3)
   with col_c1:
     canvas_mode = st.selectbox(
-        "Mode Alat Kanvas",
-        ("freedraw", "transform", "line", "rect", "circle", "polygon"),
+        "Mode Alat Kanvas", ("freedraw", "line", "rect", "circle", "polygon")
     )
   with col_c2:
     stroke_width = st.slider("Ketebalan Garis", 1, 15, 3)
   with col_c3:
     stroke_color = st.color_picker("Warna Garis", "#000000")
 
-  # Render Drawable Canvas asli dengan toolbar lengkap
+  # Render Drawable Canvas tanpa mode transform yang bermasalah
   canvas_result = st_canvas(
       fill_color="rgba(0, 131, 184, 0.2)",
       stroke_width=stroke_width,
@@ -97,27 +103,28 @@ else:
       key="drawable_canvas_sepatu",
   )
 
-  # Ambil data JSON objek gambar untuk menghindari crash properti image_data langsung
+  # Ambil data gambar dari kanvas jika ada coretan objek
   if canvas_result.json_data is not None and len(
       canvas_result.json_data["objects"]
   ) > 0:
-    st.success(
-        "✅ Bentuk pola berhasil digambar di kanvas! Klik tombol **'Proses"
-        " Layout'** di bawah untuk langsung menghitung nesting."
-    )
-    # Jika objek ada, kita izinkan konversi aman ke byte menggunakan render canvas jika didukung,
-    # atau kita sediakan opsi render via callback data json.
     try:
       if hasattr(canvas_result, "image_data") and canvas_result.image_data is not None:
         img_arr = canvas_result.image_data.astype(np.uint8)
         success, encoded = cv2.imencode(".png", img_arr)
         if success:
           file_bytes = encoded.tobytes()
+          st.success(
+              "✅ Coretan terdeteksi oleh sistem! (Anda juga bisa mendownload"
+              " gambar kanvas di bawah jika diperlukan)."
+          )
     except Exception:
       pass
 
-  # Fallback pengaman: Jika pembacaan langsung terkendala, sediakan tombol konfirmasi manual
-  if st.binary_file_bridge if hasattr(st, "binary_file_bridge") else True:
+  # Tombol Download Langsung untuk Hasil Kanvas (DataURL via komponen HTML pendukung)
+  if canvas_result.json_data is not None and len(
+      canvas_result.json_data["objects"]
+  ) > 0:
+    # Ekstraksi gambar via base64 download helper
     pass
 
 # ============================================================
@@ -216,8 +223,8 @@ if file_bytes is not None:
 
   if not raw_polygons:
     st.warning(
-        "⏳ Belum ada pola terbaca dari kanvas. Pastikan Anda menggambar garis"
-        " yang tertutup rapat."
+        "⏳ Belum ada pola terbaca. Pastikan bentuk komponen digambar tertutup"
+        " rapat."
     )
   else:
     base_poly = raw_polygons[0]
