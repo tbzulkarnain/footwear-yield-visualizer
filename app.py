@@ -69,66 +69,48 @@ if input_method == "Upload Gambar Pola (File)":
 
 else:
   st.markdown(
-      "Gunakan kanvas di bawah untuk menggambar atau membuat sketsa bentuk"
-      " komponen sepatu secara manual:"
+      "Gunakan kanvas di bawah untuk menggambar bentuk komponen sepatu, lalu"
+      " pastikan gambar terlihat jelas:"
   )
 
   col_c1, col_c2, col_c3 = st.columns(3)
   with col_c1:
     canvas_mode = st.selectbox(
         "Mode Gambar Kanvas",
-        ("polygon", "rect", "circle", "freedraw", "transform"),
+        ("polygon", "freedraw", "rect", "circle", "transform"),
     )
   with col_c2:
     canvas_stroke_width = st.slider("Ketebalan Garis", 1, 10, 2)
   with col_c3:
     canvas_stroke_color = st.color_picker("Warna Garis", "#000000")
 
-  # Komponen St Canvas dengan update_streamlit=True dan ukuran eksplisit
+  # Komponen St Canvas dengan realtime_update=True
   canvas_result = st_canvas(
       fill_color="rgba(51, 136, 255, 0.3)",
       stroke_width=canvas_stroke_width,
       stroke_color=canvas_stroke_color,
       background_color="#FFFFFF",
       update_streamlit=True,
+      realtime_update=True,
       height=400,
       width=700,
       drawing_mode=canvas_mode,
       key="canvas_pola_sepatu",
   )
 
-  # Perbaikan: Ambil data dari json_data atau konversi objek gambar jika tersedia
-  if canvas_result.json_data is not None and len(canvas_result.json_data.get("objects", [])) > 0:
-    # Buat kanvas kosong dengan OpenCV untuk merender objek yang digambar user
-    blank_img = np.ones((400, 700, 3), dtype=np.uint8) * 255
-    
-    for obj in canvas_result.json_data.get("objects", []):
-      obj_type = obj.get("type")
-      if obj_type == "rect":
-        left = int(obj.get("left", 0))
-        top = int(obj.get("top", 0))
-        w = int(obj.get("width", 0) * obj.get("scaleX", 1))
-        h = int(obj.get("height", 0) * obj.get("scaleY", 1))
-        cv2.rectangle(blank_img, (left, top), (left + w, top + h), (0, 0, 0), -1)
-      elif obj_type == "circle":
-        cx = int(obj.get("left", 0))
-        cy = int(obj.get("top", 0))
-        r = int(obj.get("radius", 0) * max(obj.get("scaleX", 1), obj.get("scaleY", 1)))
-        cv2.circle(blank_img, (cx, cy), r, (0, 0, 0), -1)
-      elif obj_type == "path":
-        # Untuk freedraw path
-        path = obj.get("path", [])
-        pts = []
-        for cmd in path:
-          if len(cmd) >= 3:
-            pts.append([int(cmd[1]), int(cmd[2])])
-        if len(pts) > 1:
-          pts_np = np.array(pts, dtype=np.int32)
-          cv2.polylines(blank_img, [pts_np], isClosed=False, color=(0, 0, 0), thickness=2)
+  # Ambil data gambar langsung dari canvas_result.image_data
+  if canvas_result.image_data is not None:
+    img_data = canvas_result.image_data.astype(np.uint8)
 
-    success, encoded_img = cv2.imencode(".png", blank_img)
+    if img_data.shape[2] == 4:
+      img_bgr = cv2.cvtColor(img_data, cv2.COLOR_RGBA2BGR)
+    else:
+      img_bgr = img_data
+
+    success, encoded_img = cv2.imencode(".png", img_bgr)
     if success:
       file_bytes = encoded_img.tobytes()
+
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE / CANVAS
 # ============================================================
@@ -223,8 +205,8 @@ if file_bytes is not None:
 
   if not raw_polygons:
     st.warning(
-        "⏳ Belum ada pola terbaca. Silakan unggah gambar yang jelas atau"
-        " gambar bentuk komponen pada kanvas di atas."
+        "⏳ Belum ada pola terbaca. Silakan unggah gambar atau gambar bentuk"
+        " komponen pada kanvas dengan garis yang jelas/tertutup."
     )
   else:
     base_poly = raw_polygons[0]
