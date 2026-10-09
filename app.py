@@ -84,21 +84,20 @@ else:
   with col_c3:
     canvas_stroke_color = st.color_picker("Warna Garis", "#000000")
 
-  # Komponen St Canvas dengan realtime_update=True
+  # Komponen St Canvas standar yang aman dari TypeError
   canvas_result = st_canvas(
       fill_color="rgba(51, 136, 255, 0.3)",
       stroke_width=canvas_stroke_width,
       stroke_color=canvas_stroke_color,
       background_color="#FFFFFF",
       update_streamlit=True,
-      realtime_update=True,
       height=400,
       width=700,
       drawing_mode=canvas_mode,
       key="canvas_pola_sepatu",
   )
 
-  # Ambil data gambar langsung dari canvas_result.image_data
+  # Ambil data gambar langsung dari canvas_result.image_data jika tersedia
   if canvas_result.image_data is not None:
     img_data = canvas_result.image_data.astype(np.uint8)
 
