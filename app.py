@@ -100,7 +100,7 @@ else:
                 <button id="downloadBtn" style="padding: 6px 14px; background-color: #0083B8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📥 Download Canvas Image</button>
             </a>
         </div>
-        <canvas id="paintCanvas" width="1000" height="400" style="border:2px solid #ccc; background-color:#ffffff; cursor:crosshair; border-radius: 6px; display: block;"></canvas>
+        <canvas id="paintCanvas" width="1000" height="600" style="border:2px solid #ccc; background-color:#ffffff; cursor:crosshair; border-radius: 6px; display: block;"></canvas>
         <div id="instruction" style="font-size: 12px; color: #555; margin-top: 6px; font-weight: 500;">Mode: Freehand Pencil - Click and drag to draw freely.</div>
     </div>
 
@@ -296,7 +296,7 @@ else:
     </script>
     """
 
-  components.html(canvas_html, height=480)
+  components.html(canvas_html, height=680)
 
   st.markdown("---")
   uploaded_file = st.file_uploader(
