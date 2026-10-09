@@ -733,3 +733,15 @@ if file_bytes is not None:
 
       svg_full += "</svg>"
       st.components.v1.html(svg_full, height=650, scrolling=True)
+        # Letakkan kode ini di bagian bawah aplikasi (misalnya setelah summary atau sebelum footer)
+st.markdown("---")
+col_counter1, col_counter2, col_counter3 = st.columns([2, 1, 2])
+with col_counter2:
+    visitor_badge_html = """
+    <div style="text-align: center;">
+        <a href="https://www.counterapi.com" target="_blank">
+            <img src="https://api.counterapi.dev/v1/footwear-costing-app/visitors/badge.svg?label=Total%20Visitors&color=0083B8" alt="Visitor Count">
+        </a>
+    </div>
+    """
+    st.markdown(visitor_badge_html, unsafe_allow_html=True)
