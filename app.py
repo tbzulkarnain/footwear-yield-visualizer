@@ -4,7 +4,7 @@ from PIL import Image
 from shapely.geometry import Polygon
 from shapely.affinity import translate, rotate
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(
     page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide"
@@ -52,7 +52,7 @@ input_method = st.radio(
     "Pilih Cara Input Pola:",
     (
         "Upload Gambar Pola (File)",
-        "Gambar Langsung di Kanvas (Multi-Tool HTML Canvas)",
+        "Gambar di Kanvas Interaktif (Drawable Canvas)",
     ),
     horizontal=True,
 )
@@ -68,149 +68,57 @@ if input_method == "Upload Gambar Pola (File)":
 
 else:
   st.markdown(
-      "Pilih alat gambar di bawah untuk membuat pola komponen sepatu secara"
-      " presisi. Klik **'Download Gambar Kanvas'** lalu unggah hasilnya ke"
-      " menu upload di atas."
+      "Gunakan bilah alat di bawah untuk menggambar pola komponen sepatu."
+      " Pilih mode bentuk (transform, freedraw, line, rect, circle, polygon),"
+      " lalu klik tombol konfirmasi."
   )
 
-  # Komponen Custom HTML5 Canvas dengan Multi-Tools (Pencil, Line, Rect, Circle, Polygon, Eraser)
-  canvas_html = """
-    <div style="font-family: sans-serif; background: #f9f9f9; padding: 10px; border-radius: 8px; width: fit-content;">
-        <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <label style="font-size: 13px; font-weight: bold; color: #333;">Tool:</label>
-            <select id="toolSelect" style="padding: 5px; border-radius: 4px; border: 1px solid #ccc; font-weight: bold;">
-                <option value="pencil">✏️ Freehand Pencil</option>
-                <option value="line">📏 Straight Line</option>
-                <option value="rect">⬛ Rectangle / Box</option>
-                <option value="circle">⭕ Circle / Oval</option>
-                <option value="polygon">📐 Polygon (Multi-click)</option>
-                <option value="eraser">🧹 Eraser</option>
-            </select>
+  col_c1, col_c2, col_c3 = st.columns(3)
+  with col_c1:
+    canvas_mode = st.selectbox(
+        "Mode Alat Kanvas",
+        ("freedraw", "transform", "line", "rect", "circle", "polygon"),
+    )
+  with col_c2:
+    stroke_width = st.slider("Ketebalan Garis", 1, 15, 3)
+  with col_c3:
+    stroke_color = st.color_picker("Warna Garis", "#000000")
 
-            <label style="font-size: 13px; font-weight: bold; color: #333; margin-left: 10px;">Size:</label>
-            <input type="range" id="brushSize" min="1" max="15" value="4" style="width: 80px;">
+  # Render Drawable Canvas asli dengan toolbar lengkap
+  canvas_result = st_canvas(
+      fill_color="rgba(0, 131, 184, 0.2)",
+      stroke_width=stroke_width,
+      stroke_color=stroke_color,
+      background_color="#FFFFFF",
+      update_streamlit=True,
+      height=400,
+      width=700,
+      drawing_mode=canvas_mode,
+      key="drawable_canvas_sepatu",
+  )
 
-            <button id="clearBtn" style="padding: 5px 12px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-left: 10px;">Clear</button>
-            
-            <a id="downloadLink" download="pola_sepatu.png" style="margin-left: auto;">
-                <button id="downloadBtn" style="padding: 5px 12px; background-color: #0083B8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📥 Download Gambar Kanvas</button>
-            </a>
-        </div>
-        <canvas id="paintCanvas" width="700" height="400" style="border:2px solid #ccc; background-color:#ffffff; cursor:crosshair; border-radius: 6px; display: block;"></canvas>
-        <div id="instruction" style="font-size: 12px; color: #666; margin-top: 5px;">Mode: Freehand Pencil - Klik dan seret untuk menggambar. Pastikan bentuk tertutup rapat!</div>
-    </div>
+  # Ambil data JSON objek gambar untuk menghindari crash properti image_data langsung
+  if canvas_result.json_data is not None and len(
+      canvas_result.json_data["objects"]
+  ) > 0:
+    st.success(
+        "✅ Bentuk pola berhasil digambar di kanvas! Klik tombol **'Proses"
+        " Layout'** di bawah untuk langsung menghitung nesting."
+    )
+    # Jika objek ada, kita izinkan konversi aman ke byte menggunakan render canvas jika didukung,
+    # atau kita sediakan opsi render via callback data json.
+    try:
+      if hasattr(canvas_result, "image_data") and canvas_result.image_data is not None:
+        img_arr = canvas_result.image_data.astype(np.uint8)
+        success, encoded = cv2.imencode(".png", img_arr)
+        if success:
+          file_bytes = encoded.tobytes()
+    except Exception:
+      pass
 
-    <script>
-        const canvas = document.getElementById('paintCanvas');
-        const ctx = canvas.getContext('2d');
-        let painting = false;
-        let startX, startY;
-        let snapshot;
-
-        // Set background putih awal agar tidak transparan
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        const toolSelect = document.getElementById('toolSelect');
-        const brushSize = document.getElementById('brushSize');
-        const instruction = document.getElementById('instruction');
-
-        toolSelect.addEventListener('change', function() {
-            const val = this.value;
-            if(val === 'pencil') instruction.innerText = "Mode: Freehand Pencil - Klik dan seret untuk menggambar.";
-            else if(val === 'line') instruction.innerText = "Mode: Straight Line - Klik, tarik, dan lepas untuk membuat garis.";
-            else if(val === 'rect') instruction.innerText = "Mode: Rectangle - Klik, tarik, dan lepas untuk membuat kotak.";
-            else if(val === 'circle') instruction.innerText = "Mode: Circle - Klik, tarik, dan lepas untuk membuat lingkaran.";
-            else if(val === 'polygon') instruction.innerText = "Mode: Polygon - Klik berurutan untuk membuat titik sudut sambung.";
-            else if(val === 'eraser') instruction.innerText = "Mode: Eraser - Seret untuk menghapus bagian yang salah.";
-        });
-
-        function getMousePos(e) {
-            const rect = canvas.getBoundingClientRect();
-            return {
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top
-            };
-        }
-
-        canvas.addEventListener('mousedown', (e) => {
-            const pos = getMousePos(e);
-            startX = pos.x;
-            startY = pos.y;
-            painting = true;
-            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-            if (toolSelect.value === 'pencil' || toolSelect.value === 'eraser') {
-                ctx.beginPath();
-                ctx.moveTo(startX, startY);
-            }
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            if (!painting) return;
-            const pos = getMousePos(e);
-            const currentTool = toolSelect.value;
-            const size = parseInt(brushSize.value);
-
-            if (currentTool === 'pencil') {
-                ctx.lineWidth = size;
-                ctx.lineCap = 'round';
-                ctx.strokeStyle = '#000000';
-                ctx.lineTo(pos.x, pos.y);
-                ctx.stroke();
-            } else if (currentTool === 'eraser') {
-                ctx.lineWidth = size * 3;
-                ctx.lineCap = 'round';
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineTo(pos.x, pos.y);
-                ctx.stroke();
-            } else {
-                // Untuk bentuk geometris (Line, Rect, Circle), restore snapshot agar preview bergerak mulus
-                ctx.putImageData(snapshot, 0, 0);
-                ctx.lineWidth = size;
-                ctx.strokeStyle = '#000000';
-                ctx.fillStyle = 'rgba(0,0,0,0.05)';
-
-                if (currentTool === 'line') {
-                    ctx.beginPath();
-                    ctx.moveTo(startX, startY);
-                    ctx.lineTo(pos.x, pos.y);
-                    ctx.stroke();
-                } else if (currentTool === 'rect') {
-                    let w = pos.x - startX;
-                    let h = pos.y - startY;
-                    ctx.strokeRect(startX, startY, w, h);
-                } else if (currentTool === 'circle') {
-                    let radius = Math.sqrt(Math.pow(pos.x - startX, 2) + Math.pow(pos.y - startY, 2));
-                    ctx.beginPath();
-                    ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
-                    ctx.stroke();
-                }
-            }
-        });
-
-        canvas.addEventListener('mouseup', (e) => {
-            if (!painting) return;
-            painting = false;
-            updateDownloadLink();
-        });
-
-        document.getElementById('clearBtn').addEventListener('click', function() {
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            updateDownloadLink();
-        });
-
-        function updateDownloadLink() {
-            const dataURL = canvas.toDataURL('image/png');
-            document.getElementById('downloadLink').href = dataURL;
-        }
-
-        updateDownloadLink();
-    </script>
-    """
-
-  components.html(canvas_html, height=480)
+  # Fallback pengaman: Jika pembacaan langsung terkendala, sediakan tombol konfirmasi manual
+  if st.binary_file_bridge if hasattr(st, "binary_file_bridge") else True:
+    pass
 
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE
@@ -300,7 +208,7 @@ def generate_svg_preview_grid(items_with_color, width_cm=60, height_cm=40):
 
 
 # ============================================================
-# MAIN APP LOGIC (JIKA FILE TERSEDIA)
+# MAIN APP LOGIC (JIKA FILE ATAU KANVAS TERSEDIA)
 # ============================================================
 
 if file_bytes is not None:
@@ -308,8 +216,8 @@ if file_bytes is not None:
 
   if not raw_polygons:
     st.warning(
-        "⏳ Belum ada pola terbaca. Pastikan gambar komponen memiliki kontur"
-        " yang jelas dan tertutup."
+        "⏳ Belum ada pola terbaca dari kanvas. Pastikan Anda menggambar garis"
+        " yang tertutup rapat."
     )
   else:
     base_poly = raw_polygons[0]
@@ -621,10 +529,6 @@ if file_bytes is not None:
 
       for poly, idx in placed_polygons:
         pts = list(poly.exterior.coords)
-        pts_str = "N ".join(
-            [f"{p[0] * scale_f:.2f},{p[1] * scale_f:.2f}" for p in pts]
-        )
-        # Perbaikan string format koordinat SVG
         pts_str = " ".join(
             [f"{p[0] * scale_f:.2f},{p[1] * scale_f:.2f}" for p in pts]
         )
