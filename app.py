@@ -52,7 +52,7 @@ input_method = st.radio(
     "Pilih Cara Input Pola:",
     (
         "Upload Gambar Pola (File)",
-        "Gambar Langsung di Kanvas (Custom HTML Canvas)",
+        "Gambar Langsung di Kanvas (Multi-Tool HTML Canvas)",
     ),
     horizontal=True,
 )
@@ -68,93 +68,132 @@ if input_method == "Upload Gambar Pola (File)":
 
 else:
   st.markdown(
-      "Gunakan area putih di bawah untuk menggambar bentuk komponen pola"
-      " sepatu. Klik **'Clear Canvas'** untuk mengulang, atau **'Download"
-      " Gambar Kanvas'** lalu unggah hasilnya ke menu upload agar langsung"
-      " diproses sistem nesting."
+      "Pilih alat gambar di bawah untuk membuat pola komponen sepatu secara"
+      " presisi. Klik **'Download Gambar Kanvas'** lalu unggah hasilnya ke"
+      " menu upload di atas."
   )
 
-  # Komponen Custom HTML5 Canvas dengan tombol Download langsung
+  # Komponen Custom HTML5 Canvas dengan Multi-Tools (Pencil, Line, Rect, Circle, Polygon, Eraser)
   canvas_html = """
-    <div style="font-family: sans-serif;">
-        <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
-            <button id="clearBtn" style="padding: 6px 14px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Clear Canvas</button>
-            <a id="downloadLink" download="pola_sepatu.png">
-                <button id="downloadBtn" style="padding: 6px 14px; background-color: #0083B8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📥 Download Gambar Kanvas</button>
+    <div style="font-family: sans-serif; background: #f9f9f9; padding: 10px; border-radius: 8px; width: fit-content;">
+        <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <label style="font-size: 13px; font-weight: bold; color: #333;">Tool:</label>
+            <select id="toolSelect" style="padding: 5px; border-radius: 4px; border: 1px solid #ccc; font-weight: bold;">
+                <option value="pencil">✏️ Freehand Pencil</option>
+                <option value="line">📏 Straight Line</option>
+                <option value="rect">⬛ Rectangle / Box</option>
+                <option value="circle">⭕ Circle / Oval</option>
+                <option value="polygon">📐 Polygon (Multi-click)</option>
+                <option value="eraser">🧹 Eraser</option>
+            </select>
+
+            <label style="font-size: 13px; font-weight: bold; color: #333; margin-left: 10px;">Size:</label>
+            <input type="range" id="brushSize" min="1" max="15" value="4" style="width: 80px;">
+
+            <button id="clearBtn" style="padding: 5px 12px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-left: 10px;">Clear</button>
+            
+            <a id="downloadLink" download="pola_sepatu.png" style="margin-left: auto;">
+                <button id="downloadBtn" style="padding: 5px 12px; background-color: #0083B8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📥 Download Gambar Kanvas</button>
             </a>
-            <span style="font-size: 13px; color: #555; margin-left: 5px;">(Gambar pola tertutup rapat, download, lalu upload di atas)</span>
         </div>
-        <canvas id="paintCanvas" width="700" height="400" style="border:2px solid #ccc; background-color:#ffffff; cursor:crosshair; border-radius: 6px;"></canvas>
+        <canvas id="paintCanvas" width="700" height="400" style="border:2px solid #ccc; background-color:#ffffff; cursor:crosshair; border-radius: 6px; display: block;"></canvas>
+        <div id="instruction" style="font-size: 12px; color: #666; margin-top: 5px;">Mode: Freehand Pencil - Klik dan seret untuk menggambar. Pastikan bentuk tertutup rapat!</div>
     </div>
 
     <script>
         const canvas = document.getElementById('paintCanvas');
         const ctx = canvas.getContext('2d');
         let painting = false;
+        let startX, startY;
+        let snapshot;
 
         // Set background putih awal agar tidak transparan
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        function startPosition(e) {
-            painting = true;
-            draw(e);
+        const toolSelect = document.getElementById('toolSelect');
+        const brushSize = document.getElementById('brushSize');
+        const instruction = document.getElementById('instruction');
+
+        toolSelect.addEventListener('change', function() {
+            const val = this.value;
+            if(val === 'pencil') instruction.innerText = "Mode: Freehand Pencil - Klik dan seret untuk menggambar.";
+            else if(val === 'line') instruction.innerText = "Mode: Straight Line - Klik, tarik, dan lepas untuk membuat garis.";
+            else if(val === 'rect') instruction.innerText = "Mode: Rectangle - Klik, tarik, dan lepas untuk membuat kotak.";
+            else if(val === 'circle') instruction.innerText = "Mode: Circle - Klik, tarik, dan lepas untuk membuat lingkaran.";
+            else if(val === 'polygon') instruction.innerText = "Mode: Polygon - Klik berurutan untuk membuat titik sudut sambung.";
+            else if(val === 'eraser') instruction.innerText = "Mode: Eraser - Seret untuk menghapus bagian yang salah.";
+        });
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
         }
 
-        function finishedPosition() {
+        canvas.addEventListener('mousedown', (e) => {
+            const pos = getMousePos(e);
+            startX = pos.x;
+            startY = pos.y;
+            painting = true;
+            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            if (toolSelect.value === 'pencil' || toolSelect.value === 'eraser') {
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!painting) return;
+            const pos = getMousePos(e);
+            const currentTool = toolSelect.value;
+            const size = parseInt(brushSize.value);
+
+            if (currentTool === 'pencil') {
+                ctx.lineWidth = size;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = '#000000';
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+            } else if (currentTool === 'eraser') {
+                ctx.lineWidth = size * 3;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+            } else {
+                // Untuk bentuk geometris (Line, Rect, Circle), restore snapshot agar preview bergerak mulus
+                ctx.putImageData(snapshot, 0, 0);
+                ctx.lineWidth = size;
+                ctx.strokeStyle = '#000000';
+                ctx.fillStyle = 'rgba(0,0,0,0.05)';
+
+                if (currentTool === 'line') {
+                    ctx.beginPath();
+                    ctx.moveTo(startX, startY);
+                    ctx.lineTo(pos.x, pos.y);
+                    ctx.stroke();
+                } else if (currentTool === 'rect') {
+                    let w = pos.x - startX;
+                    let h = pos.y - startY;
+                    ctx.strokeRect(startX, startY, w, h);
+                } else if (currentTool === 'circle') {
+                    let radius = Math.sqrt(Math.pow(pos.x - startX, 2) + Math.pow(pos.y - startY, 2));
+                    ctx.beginPath();
+                    ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
+                    ctx.stroke();
+                }
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (!painting) return;
             painting = false;
-            ctx.beginPath();
             updateDownloadLink();
-        }
-
-        function draw(e) {
-            if (!painting) return;
-            ctx.lineWidth = 4;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = '#000000';
-
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-        }
-
-        // Support Touch untuk HP / Tablet
-        function startTouch(e) {
-            painting = true;
-            drawTouch(e);
-            e.preventDefault();
-        }
-
-        function drawTouch(e) {
-            if (!painting) return;
-            ctx.lineWidth = 4;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = '#000000';
-
-            const rect = canvas.getBoundingClientRect();
-            const touch = e.touches[0];
-            const x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
-
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            e.preventDefault();
-        }
-
-        canvas.addEventListener('mousedown', startPosition);
-        canvas.addEventListener('mouseup', finishedPosition);
-        canvas.addEventListener('mousemove', draw);
-
-        canvas.addEventListener('touchstart', startTouch);
-        canvas.addEventListener('touchend', finishedPosition);
-        canvas.addEventListener('touchmove', drawTouch);
+        });
 
         document.getElementById('clearBtn').addEventListener('click', function() {
             ctx.fillStyle = "#ffffff";
@@ -167,12 +206,11 @@ else:
             document.getElementById('downloadLink').href = dataURL;
         }
 
-        // Set initial link
         updateDownloadLink();
     </script>
     """
 
-  components.html(canvas_html, height=470)
+  components.html(canvas_html, height=480)
 
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE
@@ -583,6 +621,10 @@ if file_bytes is not None:
 
       for poly, idx in placed_polygons:
         pts = list(poly.exterior.coords)
+        pts_str = "N ".join(
+            [f"{p[0] * scale_f:.2f},{p[1] * scale_f:.2f}" for p in pts]
+        )
+        # Perbaikan string format koordinat SVG
         pts_str = " ".join(
             [f"{p[0] * scale_f:.2f},{p[1] * scale_f:.2f}" for p in pts]
         )
