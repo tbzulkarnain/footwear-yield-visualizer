@@ -69,9 +69,9 @@ if input_method == "Upload Gambar Pola (File)":
 
 else:
   st.markdown(
-      "Gunakan kanvas di bawah untuk menggambar bentuk komponen, lalu klik"
-      " tombol **'Update the app with this drawing'** di pojok kanan atas"
-      " kanvas:"
+      "Gunakan kanvas di bawah untuk menggambar bentuk komponen sepatu dengan"
+      " garis yang jelas dan tertutup, lalu klik tombol **'Gunakan Gambar"
+      " Kanvas Ini'** di bawah:"
   )
 
   col_c1, col_c2, col_c3 = st.columns(3)
@@ -98,21 +98,28 @@ else:
       key="canvas_pola_sepatu",
   )
 
-  # Ambil data dari image_data secara aman menggunakan try-except
-  try:
+  # Tombol konfirmasi manual persis seperti alur upload file
+  if st.button("🚀 Gunakan Gambar Kanvas Ini", type="secondary"):
     if canvas_result.image_data is not None:
       img_data = canvas_result.image_data.astype(np.uint8)
       if img_data.shape[2] == 4:
         img_bgr = cv2.cvtColor(img_data, cv2.COLOR_RGBA2BGR)
       else:
         img_bgr = img_data
-      
-      # Ubah latar transparan/putih menjadi format siap baca
+
       success, encoded_img = cv2.imencode(".png", img_bgr)
       if success:
-        file_bytes = encoded_img.tobytes()
-  except Exception:
-    pass
+        st.session_state["canvas_file_bytes"] = encoded_img.tobytes()
+        st.success(
+            "✅ Gambar kanvas berhasil dikunci dan siap diproses ke sistem"
+            " nesting!"
+        )
+    else:
+      st.warning("⚠️ Belum ada data gambar yang terdeteksi di kanvas.")
+
+  # Ambil byte dari session state jika tombol sudah pernah diklik
+  if "canvas_file_bytes" in st.session_state:
+    file_bytes = st.session_state["canvas_file_bytes"]
 
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE / CANVAS
@@ -129,7 +136,6 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
       return []
 
     if len(img.shape) == 3 and img.shape[2] == 4:
-      # Tangani alpha channel jika ada
       alpha = img[:, :, 3]
       rgb = img[:, :, :3]
       background = np.ones_like(rgb, dtype=np.uint8) * 255
@@ -211,9 +217,9 @@ if file_bytes is not None:
 
   if not raw_polygons:
     st.warning(
-        "⏳ Pola dari kanvas belum terdeteksi. Pastikan garis gambar tertutup"
-        " rapat dan warnanya cukup kontras, lalu klik tombol update di"
-        " kanvas."
+        "⏳ Belum ada pola terbaca. Pastikan Anda sudah mengklik tombol"
+        " **'Gunakan Gambar Kanvas Ini'** di bawah kanvas dan bentuk gambar"
+        " tertutup rapat."
     )
   else:
     base_poly = raw_polygons[0]
