@@ -7,10 +7,10 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(
-    page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide"
+    page_title="Footwear Material Nesting", page_icon="📐", layout="wide"
 )
 
-st.title("⚡ Footwear Material Nesting & Drawing Studio")
+st.title("⚡ Footwear Material Nesting")
 st.markdown("---")
 
 # ============================================================
@@ -18,8 +18,8 @@ st.markdown("---")
 # ============================================================
 
 st.subheader("📋 Material Setup")
-col_p1, col_p1_unit, col_p2, col_p3, col_p4 = st.columns(
-    [1.5, 1, 1.2, 1.2, 1.2]
+col_p1, col_p1_unit, col_p2, col_p3, col_p4, col_p5 = st.columns(
+    [1.4, 0.9, 1.1, 1.1, 1.1, 1.2]
 )
 
 with col_p1:
@@ -27,7 +27,7 @@ with col_p1:
       "Material Width", value=44.0, step=1.0, format="%.2f"
   )
 with col_p1_unit:
-  width_unit = st.selectbox("Width Unit", ["inch", "cm", "m"], index=0)
+  width_unit = st.selectbox("Unit", ["inch", "cm", "m"], index=0)
 
 # Konversi lebar material ke cm berdasarkan pilihan unit
 if width_unit == "inch":
@@ -38,28 +38,29 @@ else:
   sheet_width = material_width_input
 
 with col_p2:
-  sheet_length = st.number_input("Material Length (cm)", value=100.0, step=5.0)
+  sheet_length = st.number_input("Length (cm)", value=100.0, step=5.0)
 with col_p3:
   margin = st.number_input("Margin (cm)", value=1.0, step=0.5)
 with col_p4:
+  material_price = st.number_input(
+      "Price / Meter ($)", value=5.00, step=0.50, format="%.2f"
+  )
+with col_p5:
   target_pairs = st.number_input("Target Pairs", value=50, min_value=1, step=1)
   target_pieces = target_pairs * 2
 
 st.markdown("---")
-st.subheader("📥 Input Sumber Pola Komponen")
+st.subheader("📥 Component Pattern Source Input")
 
 input_method = st.radio(
-    "Pilih Cara Input Pola:",
-    (
-        "Upload Gambar Pola (File)",
-        "Gambar di Kanvas Interaktif (HTML5 Multi-Tool)",
-    ),
+    "Select Pattern Input Method:",
+    ("Upload Pattern Image (File)", "Draw on Interactive Canvas (HTML5 Studio)"),
     horizontal=True,
 )
 
 file_bytes = None
 
-if input_method == "Upload Gambar Pola (File)":
+if input_method == "Upload Pattern Image (File)":
   uploaded_file = st.file_uploader(
       "Upload Pattern Component Master Image", type=["png", "jpg", "jpeg"]
   )
@@ -68,15 +69,16 @@ if input_method == "Upload Gambar Pola (File)":
 
 else:
   st.markdown(
-      "💡 **Panduan Kanvas:** Pilih alat gambar (*Pencil, Line, Rect, Circle,"
-      " Polygon, atau Eraser*), buat bentuk komponen sepatu tertutup rapat,"
-      " klik **'Download Gambar Kanvas'**, lalu unggah hasilnya di bawah."
+      "💡 **Canvas Guide:** Choose a drawing tool (*Pencil, Line, Rect, Circle,"
+      " Polygon, or Eraser*), draw a tightly closed component shape, use"
+      " **Undo/Redo** if needed, click **'Download Canvas Image'**, and upload"
+      " the resulting file below."
   )
 
-  # Komponen Custom HTML5 Canvas Lengkap dengan Polygon & Tombol Download
+  # Komponen Custom HTML5 Canvas Lengkap dengan Undo, Redo, Polygon, & Download
   canvas_html = """
     <div style="font-family: sans-serif; background: #f9f9f9; padding: 12px; border-radius: 8px; width: fit-content;">
-        <div style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <div style="margin-bottom: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <label style="font-size: 13px; font-weight: bold; color: #333;">Tool:</label>
             <select id="toolSelect" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-weight: bold;">
                 <option value="pencil">✏️ Freehand Pencil</option>
@@ -87,17 +89,19 @@ else:
                 <option value="eraser">🧹 Eraser</option>
             </select>
 
-            <label style="font-size: 13px; font-weight: bold; color: #333; margin-left: 10px;">Size:</label>
-            <input type="range" id="brushSize" min="1" max="15" value="4" style="width: 80px;">
+            <label style="font-size: 13px; font-weight: bold; color: #333; margin-left: 5px;">Size:</label>
+            <input type="range" id="brushSize" min="1" max="15" value="4" style="width: 70px;">
 
-            <button id="clearBtn" style="padding: 6px 14px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-left: 10px;">Clear</button>
+            <button id="undoBtn" style="padding: 6px 12px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-left: 10px;">↩️ Undo</button>
+            <button id="redoBtn" style="padding: 6px 12px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🔁 Redo</button>
+            <button id="clearBtn" style="padding: 6px 12px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Clear</button>
             
-            <a id="downloadLink" download="pola_sepatu_kanvas.png" style="margin-left: auto;">
-                <button id="downloadBtn" style="padding: 6px 14px; background-color: #0083B8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📥 Download Gambar Kanvas</button>
+            <a id="downloadLink" download="footwear_pattern_canvas.png" style="margin-left: auto;">
+                <button id="downloadBtn" style="padding: 6px 14px; background-color: #0083B8; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📥 Download Canvas Image</button>
             </a>
         </div>
         <canvas id="paintCanvas" width="700" height="400" style="border:2px solid #ccc; background-color:#ffffff; cursor:crosshair; border-radius: 6px; display: block;"></canvas>
-        <div id="instruction" style="font-size: 12px; color: #555; margin-top: 6px; font-weight: 500;">Mode: Freehand Pencil - Klik dan seret untuk menggambar.</div>
+        <div id="instruction" style="font-size: 12px; color: #555; margin-top: 6px; font-weight: 500;">Mode: Freehand Pencil - Click and drag to draw freely.</div>
     </div>
 
     <script>
@@ -107,24 +111,40 @@ else:
         let startX, startY;
         let snapshot;
 
+        // Undo / Redo history stacks
+        let undoStack = [];
+        let redoStack = [];
+        const maxHistory = 20;
+
+        // Polygon variables
         let polyPoints = [];
         let isDrawingPolygon = false;
 
+        // Set initial white background
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        saveState();
 
         const toolSelect = document.getElementById('toolSelect');
         const brushSize = document.getElementById('brushSize');
         const instruction = document.getElementById('instruction');
 
+        function saveState() {
+            if (undoStack.length >= maxHistory) {
+                undoStack.shift();
+            }
+            undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+            redoStack = []; // Clear redo stack on new action
+        }
+
         toolSelect.addEventListener('change', function() {
             const val = this.value;
-            if(val === 'pencil') instruction.innerText = "Mode: Freehand Pencil - Klik dan seret untuk menggambar bebas.";
-            else if(val === 'line') instruction.innerText = "Mode: Straight Line - Klik, tarik, dan lepas untuk garis lurus.";
-            else if(val === 'rect') instruction.innerText = "Mode: Rectangle - Klik, tarik, dan lepas untuk kotak.";
-            else if(val === 'circle') instruction.innerText = "Mode: Circle - Klik, tarik, dan lepas untuk lingkaran.";
-            else if(val === 'polygon') instruction.innerText = "Mode: Polygon - Klik titik-titik sudut berurutan. Klik dua kali (Double-click) untuk menutup bentuk.";
-            else if(val === 'eraser') instruction.innerText = "Mode: Eraser - Seret untuk menghapus coretan.";
+            if(val === 'pencil') instruction.innerText = "Mode: Freehand Pencil - Click and drag to draw freely.";
+            else if(val === 'line') instruction.innerText = "Mode: Straight Line - Click, drag, and release to draw a straight line.";
+            else if(val === 'rect') instruction.innerText = "Mode: Rectangle - Click, drag, and release to draw a rectangle.";
+            else if(val === 'circle') instruction.innerText = "Mode: Circle - Click, drag, and release to draw a circle.";
+            else if(val === 'polygon') instruction.innerText = "Mode: Polygon - Click consecutive corner points. Double-click to close shape.";
+            else if(val === 'eraser') instruction.innerText = "Mode: Eraser - Drag over strokes to erase.";
             polyPoints = [];
             isDrawingPolygon = false;
         });
@@ -187,6 +207,7 @@ else:
 
                 isDrawingPolygon = false;
                 polyPoints = [];
+                saveState();
                 updateDownloadLink();
             }
         });
@@ -235,7 +256,26 @@ else:
         canvas.addEventListener('mouseup', (e) => {
             if (!painting) return;
             painting = false;
+            saveState();
             updateDownloadLink();
+        });
+
+        document.getElementById('undoBtn').addEventListener('click', function() {
+            if (undoStack.length > 1) {
+                redoStack.push(undoStack.pop());
+                const prevState = undoStack[undoStack.length - 1];
+                ctx.putImageData(prevState, 0, 0);
+                updateDownloadLink();
+            }
+        });
+
+        document.getElementById('redoBtn').addEventListener('click', function() {
+            if (redoStack.length > 0) {
+                const nextState = redoStack.pop();
+                undoStack.push(nextState);
+                ctx.putImageData(nextState, 0, 0);
+                updateDownloadLink();
+            }
         });
 
         document.getElementById('clearBtn').addEventListener('click', function() {
@@ -243,6 +283,7 @@ else:
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             polyPoints = [];
             isDrawingPolygon = false;
+            saveState();
             updateDownloadLink();
         });
 
@@ -259,8 +300,7 @@ else:
 
   st.markdown("---")
   uploaded_file = st.file_uploader(
-      "📁 Unggah File PNG Hasil Download Kanvas di Atas",
-      type=["png", "jpg", "jpeg"],
+      "📁 Upload Downloaded Canvas PNG File", type=["png", "jpg", "jpeg"]
   )
   if uploaded_file is not None:
     file_bytes = uploaded_file.read()
@@ -361,8 +401,8 @@ if file_bytes is not None:
 
   if not raw_polygons:
     st.warning(
-        "⏳ Belum ada pola terbaca. Pastikan bentuk komponen digambar tertutup"
-        " rapat."
+        "⏳ No pattern detected yet. Make sure the component shape is drawn"
+        " fully closed."
     )
   else:
     base_poly = raw_polygons[0]
@@ -442,7 +482,7 @@ if file_bytes is not None:
     unit_h = p1_h if not is_twoway_cat else max(p1_h, p2_h)
     pitch_y = unit_h + fine_tune_y
 
-    # BENTUK PREVIEW GRID 2 BARIS (DIPERBAIKI)
+    # BENTUK PREVIEW GRID 2 BARIS
     preview_items = []
 
     if "Category 1" in category:
@@ -467,7 +507,7 @@ if file_bytes is not None:
       preview_items.append((translate(p1, xoff=row2_x1, yoff=row2_y), 0))
       preview_items.append((translate(p1, xoff=row2_x2, yoff=row2_y), 1))
 
-    else:  # Category 4: Two Way Staggered (Diperbaiki)
+    else:  # Category 4
       default_stagger_x = step_x / 2
       preview_items.append((p1, 0))
       preview_items.append((translate(p2, xoff=step_x, yoff=0), 1))
@@ -599,7 +639,7 @@ if file_bytes is not None:
           row_idx += 1
 
       # ============================================================
-      # PERHITUNGAN STANDAR METRIK (CLEAN FORMATTING & YIELD)
+      # PERHITUNGAN STANDAR METRIK (CLEAN FORMATTING & YIELD & COST)
       # ============================================================
       pieces_completed = len(placed_polygons)
       pairs_completed = max(pieces_completed // 2, 1)
@@ -629,20 +669,28 @@ if file_bytes is not None:
           used_length_m / pairs_completed if pairs_completed > 0 else 0.0
       )
 
+      # Perhitungan Biaya Material per Pasang (dalam USD)
+      total_material_cost = used_length_m * material_price
+      cost_per_pair = (
+          total_material_cost / pairs_completed if pairs_completed > 0 else 0.0
+      )
+
       st.markdown("### 📊 Summary Report")
 
-      col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
-      col_m1.metric("Parts per pair", f"{2.00:.2f}")
+      col_m1, col_m2, col_m3, col_m4, col_m5, col_m6, col_m7 = st.columns(7)
+      col_m1.metric("Parts / pair", f"{2.00:.2f}")
       col_m2.metric("Net Area / pair", f"{net_area_per_pair:.4f}")
       col_m3.metric("Gross Area / pair", f"{gross_area_per_pair:.4f}")
-      col_m4.metric("Waste Area / pair", f"{waste_area_per_pair:.4f}")
-      col_m5.metric("Efficiency (%)", f"{efficiency:.2f}%")
-      col_m6.metric("Yield (per meter)", f"{yield_value:.4f}")
+      col_m4.metric("Waste / pair", f"{waste_area_per_pair:.4f}")
+      col_m5.metric("Efficiency", f"{efficiency:.2f}%")
+      col_m6.metric("Yield (m/pair)", f"{yield_value:.4f}")
+      col_m7.metric("Material Cost / Pair", f"${cost_per_pair:.2f}")
 
       st.info(
           f"💡 **Production Info:** Placed {pairs_completed} pairs"
           f" ({pieces_completed} pcs) | Used Length: **{max_used_y:.2f} cm**"
-          f" out of {sheet_length:.1f} cm (Width: {sheet_width:.1f} cm)"
+          f" out of {sheet_length:.1f} cm (Width: {sheet_width:.1f} cm) | Total"
+          f" Cost: **${total_material_cost:.2f}**"
       )
 
       # RENDER SVG FULL SHEET
