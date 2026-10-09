@@ -4,7 +4,6 @@ from PIL import Image
 from shapely.geometry import Polygon
 from shapely.affinity import translate, rotate
 import streamlit as st
-from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(
     page_title="Footwear Material Yield Visualizer", page_icon="📐", layout="wide"
@@ -48,81 +47,16 @@ with col_p4:
 st.markdown("---")
 st.subheader("📥 Input Sumber Pola Komponen")
 
-# Pilihan metode input: Upload File vs Kanvas Gambar Langsung
-input_method = st.radio(
-    "Pilih Cara Input Pola:",
-    (
-        "Upload Gambar Pola (File)",
-        "Gambar Langsung di Kanvas (Interactive Canvas)",
-    ),
-    horizontal=True,
+uploaded_file = st.file_uploader(
+    "Upload Pattern Component Master Image (PNG/JPG)", type=["png", "jpg", "jpeg"]
 )
 
 file_bytes = None
-
-if input_method == "Upload Gambar Pola (File)":
-  uploaded_file = st.file_uploader(
-      "Upload Pattern Component Master Image", type=["png", "jpg", "jpeg"]
-  )
-  if uploaded_file is not None:
-    file_bytes = uploaded_file.read()
-
-else:
-  st.markdown(
-      "Gunakan kanvas di bawah untuk menggambar bentuk komponen sepatu dengan"
-      " garis yang jelas dan tertutup, lalu klik tombol **'Gunakan Gambar"
-      " Kanvas Ini'** di bawah:"
-  )
-
-  col_c1, col_c2, col_c3 = st.columns(3)
-  with col_c1:
-    canvas_mode = st.selectbox(
-        "Mode Gambar Kanvas",
-        ("polygon", "freedraw", "rect", "circle", "transform"),
-    )
-  with col_c2:
-    canvas_stroke_width = st.slider("Ketebalan Garis", 1, 10, 2)
-  with col_c3:
-    canvas_stroke_color = st.color_picker("Warna Garis", "#000000")
-
-  # Kanvas Interaktif
-  canvas_result = st_canvas(
-      fill_color="rgba(51, 136, 255, 0.3)",
-      stroke_width=canvas_stroke_width,
-      stroke_color=canvas_stroke_color,
-      background_color="#FFFFFF",
-      update_streamlit=True,
-      height=400,
-      width=700,
-      drawing_mode=canvas_mode,
-      key="canvas_pola_sepatu",
-  )
-
-  # Tombol konfirmasi manual persis seperti alur upload file
-  if st.button("🚀 Gunakan Gambar Kanvas Ini", type="secondary"):
-    if canvas_result.image_data is not None:
-      img_data = canvas_result.image_data.astype(np.uint8)
-      if img_data.shape[2] == 4:
-        img_bgr = cv2.cvtColor(img_data, cv2.COLOR_RGBA2BGR)
-      else:
-        img_bgr = img_data
-
-      success, encoded_img = cv2.imencode(".png", img_bgr)
-      if success:
-        st.session_state["canvas_file_bytes"] = encoded_img.tobytes()
-        st.success(
-            "✅ Gambar kanvas berhasil dikunci dan siap diproses ke sistem"
-            " nesting!"
-        )
-    else:
-      st.warning("⚠️ Belum ada data gambar yang terdeteksi di kanvas.")
-
-  # Ambil byte dari session state jika tombol sudah pernah diklik
-  if "canvas_file_bytes" in st.session_state:
-    file_bytes = st.session_state["canvas_file_bytes"]
+if uploaded_file is not None:
+  file_bytes = uploaded_file.read()
 
 # ============================================================
-# EXTRACT POLYGONS FROM IMAGE / CANVAS
+# EXTRACT POLYGONS FROM IMAGE
 # ============================================================
 
 
@@ -209,7 +143,7 @@ def generate_svg_preview_grid(items_with_color, width_cm=60, height_cm=40):
 
 
 # ============================================================
-# MAIN APP LOGIC (JIKA FILE ATAU KANVAS TERSEDIA)
+# MAIN APP LOGIC (JIKA FILE TERSEDIA)
 # ============================================================
 
 if file_bytes is not None:
@@ -217,9 +151,8 @@ if file_bytes is not None:
 
   if not raw_polygons:
     st.warning(
-        "⏳ Belum ada pola terbaca. Pastikan Anda sudah mengklik tombol"
-        " **'Gunakan Gambar Kanvas Ini'** di bawah kanvas dan bentuk gambar"
-        " tertutup rapat."
+        "⏳ Belum ada pola terbaca. Pastikan gambar komponen memiliki kontur"
+        " yang jelas dan tertutup."
     )
   else:
     base_poly = raw_polygons[0]
