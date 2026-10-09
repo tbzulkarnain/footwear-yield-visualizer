@@ -98,68 +98,21 @@ else:
       key="canvas_pola_sepatu",
   )
 
-  # Render objek json dari kanvas ke gambar OpenCV dengan aman
-  if canvas_result.json_data is not None and len(canvas_result.json_data.get("objects", [])) > 0:
-    canvas_img = np.ones((400, 700, 3), dtype=np.uint8) * 255
-
-    for obj in canvas_result.json_data.get("objects", []):
-      obj_type = obj.get("type")
+  # Ambil data dari image_data secara aman menggunakan try-except
+  try:
+    if canvas_result.image_data is not None:
+      img_data = canvas_result.image_data.astype(np.uint8)
+      if img_data.shape[2] == 4:
+        img_bgr = cv2.cvtColor(img_data, cv2.COLOR_RGBA2BGR)
+      else:
+        img_bgr = img_data
       
-      if obj_type == "rect":
-        left = int(obj.get("left", 0))
-        top = int(obj.get("top", 0))
-        w = int(obj.get("width", 0) * obj.get("scaleX", 1))
-        h = int(obj.get("height", 0) * obj.get("scaleY", 1))
-        cv2.rectangle(canvas_img, (left, top), (left + w, top + h), (0, 0, 0), -1)
-        
-      elif obj_type == "circle":
-        cx = int(obj.get("left", 0) + obj.get("radius", 0))
-        cy = int(obj.get("top", 0) + obj.get("radius", 0))
-        r = int(obj.get("radius", 0) * max(obj.get("scaleX", 1), obj.get("scaleY", 1)))
-        cv2.circle(canvas_img, (cx, cy), r, (0, 0, 0), -1)
-        
-      elif obj_type == "polygon":
-        points = obj.get("points", [])
-        left_offset = obj.get("left", 0)
-        top_offset = obj.get("top", 0)
-        scale_x = obj.get("scaleX", 1)
-        scale_y = obj.get("scaleY", 1)
-        
-        pts = []
-        for p in points:
-          # p bisa berupa dictionary {'x': ..., 'y': ...} atau list
-          if isinstance(p, dict):
-            x = int(left_offset + (p.get("x", 0) * scale_x))
-            y = int(top_offset + (p.get("y", 0) * scale_y))
-            pts.append([x, y])
-          elif isinstance(p, (list, tuple)) and len(p) >= 2:
-            x = int(left_offset + (p[0] * scale_x))
-            y = int(top_offset + (p[1] * scale_y))
-            pts.append([x, y])
-            
-        if len(pts) > 2:
-          pts_np = np.array(pts, dtype=np.int32)
-          cv2.fillPoly(canvas_img, [pts_np], (0, 0, 0))
-
-      elif obj_type == "path":
-        path_data = obj.get("path", [])
-        left_offset = obj.get("left", 0)
-        top_offset = obj.get("top", 0)
-        
-        pts = []
-        for cmd in path_data:
-          # Format path SVG fabric.js: ['M', x, y], ['L', x, y], dll.
-          if len(cmd) >= 3 and isinstance(cmd[1], (int, float)) and isinstance(cmd[2], (int, float)):
-            pts.append([int(left_offset + cmd[1]), int(top_offset + cmd[2])])
-            
-        if len(pts) > 1:
-          pts_np = np.array(pts, dtype=np.int32)
-          cv2.polylines(canvas_img, [pts_np], isClosed=True, color=(0, 0, 0), thickness=2)
-          cv2.fillPoly(canvas_img, [pts_np], (0, 0, 0))
-
-    success, encoded_img = cv2.imencode(".png", canvas_img)
-    if success:
-      file_bytes = encoded_img.tobytes()
+      # Ubah latar transparan/putih menjadi format siap baca
+      success, encoded_img = cv2.imencode(".png", img_bgr)
+      if success:
+        file_bytes = encoded_img.tobytes()
+  except Exception:
+    pass
 
 # ============================================================
 # EXTRACT POLYGONS FROM IMAGE / CANVAS
@@ -176,21 +129,24 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
       return []
 
     if len(img.shape) == 3 and img.shape[2] == 4:
-      gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+      # Tangani alpha channel jika ada
+      alpha = img[:, :, 3]
+      rgb = img[:, :, :3]
+      background = np.ones_like(rgb, dtype=np.uint8) * 255
+      alpha_factor = alpha[:, :, np.newaxis].astype(np.float32) / 255.0
+      gray = cv2.cvtColor(
+          (rgb * alpha_factor + background * (1 - alpha_factor)).astype(
+              np.uint8
+          ),
+          cv2.COLOR_BGR2GRAY,
+      )
     elif len(img.shape) == 3:
       gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     else:
       gray = img
 
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    thresh = cv2.adaptiveThreshold(
-        blurred,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        11,
-        2,
-    )
+    _, thresh = cv2.threshold(blurred, 240, 255, cv2.THRESH_BINARY_INV)
     contours, _ = cv2.findContours(
         thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
@@ -203,7 +159,7 @@ def extract_polygons_from_bytes(file_bytes, dpi=96):
 
     for cnt in contours:
       area_px = cv2.contourArea(cnt)
-      if 300 < area_px <= max_area_px:
+      if 50 < area_px <= max_area_px:
         epsilon = 0.005 * cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, epsilon, True)
         pts = approx.reshape(-1, 2) / pixels_per_cm
@@ -255,8 +211,9 @@ if file_bytes is not None:
 
   if not raw_polygons:
     st.warning(
-        "⏳ Pola dari kanvas belum terbaca. Pastikan bentuk gambar tertutup"
-        " sempurna dan klik tombol update pada kanvas."
+        "⏳ Pola dari kanvas belum terdeteksi. Pastikan garis gambar tertutup"
+        " rapat dan warnanya cukup kontras, lalu klik tombol update di"
+        " kanvas."
     )
   else:
     base_poly = raw_polygons[0]
@@ -369,7 +326,7 @@ if file_bytes is not None:
       row2_x1 = default_stagger_x + preview_shift_x
       row2_x2 = row2_x1 + step_x
       preview_items.append((translate(p1, xoff=row2_x1, yoff=row2_y), 0))
-      preview_items.append((translate(p2, xoff=row2_x2, yoff=row2_y), 1))
+      preview_items.append((translate(p1, xoff=row2_x2, yoff=row2_y), 1))
 
     with col_prev:
       st.markdown("##### 👁️ Live Preview Grid (2 Rows)")
