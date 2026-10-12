@@ -751,44 +751,58 @@ if file_bytes is not None:
             st.components.v1.html(svg_full, height=650, scrolling=True)
 
             # ============================================================
-            # FITUR EXPORT UNTUK TIM PRODUKSI
+            # FITUR EXPORT LAPORAN LENGKAP + GAMBAR (HTML FORMAT)
             # ============================================================
-            st.markdown("### 📥 Export Production Report & Layout")
+            st.markdown("### 📥 Export Production Report & Visual Layout")
 
-            report_data = {
-                "Metric": [
-                    "Target Pairs", "Parts per Pair", "Net Area / Pair", 
-                    "Gross Area / Pair", "Waste / Pair", "Efficiency (%)", 
-                    "Yield (m/pair)", "Material Cost / Pair ($)", 
-                    "Used Length (cm)", "Sheet Width (cm)", "Total Material Cost ($)"
-                ],
-                "Value": [
-                    pairs_completed, 2.00, f"{net_area_per_pair:.4f}", 
-                    f"{gross_area_per_pair:.4f}", f"{waste_area_per_pair:.4f}", f"{efficiency:.2f}%", 
-                    f"{yield_value:.4f}", f"${cost_per_pair:.2f}", 
-                    f"{max_used_y:.2f}", f"{sheet_width:.1f}", f"${total_material_cost:.2f}"
-                ]
-            }
+            html_report_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Footwear Material Nesting Report - {pairs_completed} Pairs</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; color: #333; }}
+                    h1 {{ color: #0083B8; }}
+                    .summary-box {{ background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                    th, td {{ border: 1px solid #ddd; padding: 8px 12px; text-align: left; }}
+                    th {{ background-color: #0083B8; color: white; }}
+                    .layout-container {{ margin-top: 20px; text-align: center; }}
+                </style>
+            </head>
+            <body>
+                <h1>⚡ Footwear Material Nesting Report</h1>
+                <p><strong>Category:</strong> {category}</p>
+                
+                <div class="summary-box">
+                    <h3>📊 Production Summary</h3>
+                    <table>
+                        <tr><th>Metric</th><th>Value</th></tr>
+                        <tr><td>Target Pairs</td><td>{pairs_completed} Pairs ({pieces_completed} Pcs)</td></tr>
+                        <tr><td>Net Area / Pair</td><td>{net_area_per_pair:.4f} cm²</td></tr>
+                        <tr><td>Gross Area / Pair</td><td>{gross_area_per_pair:.4f} cm²</td></tr>
+                        <tr><td>Waste / Pair</td><td>{waste_area_per_pair:.4f} cm²</td></tr>
+                        <tr><td>Material Efficiency</td><td><strong>{efficiency:.2f}%</strong></td></tr>
+                        <tr><td>Yield</td><td>{yield_value:.4f} m/pair</td></tr>
+                        <tr><td>Material Cost / Pair</td><td><strong>${cost_per_pair:.2f}</strong></td></tr>
+                        <tr><td>Total Used Length</td><td>{max_used_y:.2f} cm (from {sheet_length:.1f} cm limit)</td></tr>
+                        <tr><td>Total Material Cost</td><td>${total_material_cost:.2f}</td></tr>
+                    </table>
+                </div>
 
-            df_report = pd.DataFrame(report_data)
-            csv_data = df_report.to_csv(index=False).encode('utf-8')
+                <div class="layout-container">
+                    <h3>📐 Visual Nesting Layout</h3>
+                    <div>{svg_full}</div>
+                </div>
+            </body>
+            </html>
+            """
 
-            col_exp1, col_exp2 = st.columns(2)
-
-            with col_exp1:
-                st.download_button(
-                    label="📄 Download Production Metrics (CSV)",
-                    data=csv_data,
-                    file_name=f"nesting_report_{pairs_completed}pairs.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-
-            with col_exp2:
-                st.download_button(
-                    label="📐 Download Layout Vector (SVG)",
-                    data=svg_full,
-                    file_name=f"nesting_layout_{pairs_completed}pairs.svg",
-                    mime="image/svg+xml",
-                    use_container_width=True
-                )
+            st.download_button(
+                label="📥 Download Full Production Report (HTML with Visual Layout)",
+                data=html_report_content,
+                file_name=f"Footwear_Nesting_Report_{pairs_completed}pairs.html",
+                mime="text/html",
+                use_container_width=True
+            )
