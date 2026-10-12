@@ -733,15 +733,30 @@ if file_bytes is not None:
 
       svg_full += "</svg>"
       st.components.v1.html(svg_full, height=650, scrolling=True)
-        # Letakkan kode ini di bagian bawah aplikasi (misalnya setelah summary atau sebelum footer)
+       import streamlit as st
+
+st.set_page_config(
+    page_title="Footwear Material Nesting", page_icon="📐", layout="wide"
+)
+
+# Menggunakan layout kolom untuk menyejajarkan Judul di kiri dan Counter di pojok kanan atas
+col_title, col_counter = [st.columns([4, 1])[0], st.columns([4, 1])[1]]
+
+with col_title:
+    st.title("⚡ Footwear Material Nesting")
+
+with col_counter:
+    # Menggunakan HTML dengan align ke kanan agar pas di pojok kanan atas
+    st.markdown(
+        """
+        <div style="text-align: right; padding-top: 15px;">
+            <span style="font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 2px;">VISITORS</span>
+            <a href="https://www.hitwebcounter.com" target="_blank">
+                <img src="https://hitwebcounter.com/counter/counter.php?page=19782811&style=0006&nbdigits=5&type=page&initCount=0" title="Counter Widget" Alt="Visit counter For Websites" border="0" />
+            </a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 st.markdown("---")
-col_counter1, col_counter2, col_counter3 = st.columns([2, 1, 2])
-with col_counter2:
-    visitor_badge_html = """
-    <div style="text-align: center;">
-        <a href="https://www.counterapi.com" target="_blank">
-            <img src="https://api.counterapi.dev/v1/footwear-costing-app/visitors/badge.svg?label=Total%20Visitors&color=0083B8" alt="Visitor Count">
-        </a>
-    </div>
-    """
-    st.markdown(visitor_badge_html, unsafe_allow_html=True)
