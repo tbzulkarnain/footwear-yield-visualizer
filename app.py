@@ -652,6 +652,52 @@ if file_bytes is not None:
                         curr_x += step_x
                         col_idx += 1
                     row_idx += 1
+                    # ============================================================
+# FEATURE EXPORT UNTUK TIM PRODUKSI (CSV & REPORT)
+# ============================================================
+st.markdown("### 📥 Export Production Report & Layout")
+
+# 1. Siapkan data CSV untuk diekspor
+import pandas as pd
+
+report_data = {
+    "Metric": [
+        "Target Pairs", "Parts per Pair", "Net Area / Pair", 
+        "Gross Area / Pair", "Waste / Pair", "Efficiency (%)", 
+        "Yield (m/pair)", "Material Cost / Pair ($)", 
+        "Used Length (cm)", "Sheet Width (cm)", "Total Material Cost ($)"
+    ],
+    "Value": [
+        pairs_completed, 2.00, f"{net_area_per_pair:.4f}", 
+        f"{gross_area_per_pair:.4f}", f"{waste_area_per_pair:.4f}", f"{efficiency:.2f}%", 
+        f"{yield_value:.4f}", f"${cost_per_pair:.2f}", 
+        f"{max_used_y:.2f}", f"{sheet_width:.1f}", f"${total_material_cost:.2f}"
+    ]
+}
+
+df_report = pd.DataFrame(report_data)
+csv_data = df_report.to_csv(index=False).encode('utf-8')
+
+col_exp1, col_exp2 = st.columns(2)
+
+with col_exp1:
+    st.download_button(
+        label="📄 Download Production Metrics (CSV)",
+        data=csv_data,
+        file_name=f"nesting_report_{pairs_completed}pairs.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+with col_exp2:
+    # 2. Download SVG File (Bisa dibuka di CorelDraw, Illustrator, atau Browser)
+    st.download_button(
+        label="📐 Download Layout Vector (SVG)",
+        data=svg_full,
+        file_name=f"nesting_layout_{pairs_completed}pairs.svg",
+        mime="image/svg+xml",
+        use_container_width=True
+    )
 
             # ============================================================
             # PERHITUNGAN STANDAR METRIK (CLEAN FORMATTING & YIELD & COST)
