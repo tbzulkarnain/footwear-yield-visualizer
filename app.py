@@ -740,13 +740,25 @@ st.set_page_config(
 )
 
 # Menggunakan layout kolom untuk menyejajarkan Judul di kiri dan Counter di pojok kanan atas
-col_title, col_counter = [st.columns([4, 1])[0], st.columns([4, 1])[1]]
+import cv2
+import numpy as np
+from PIL import Image
+from shapely.geometry import Polygon
+from shapely.affinity import translate, rotate
+import streamlit as st
+import streamlit.components.v1 as components
+
+st.set_page_config(
+    page_title="Footwear Material Nesting", page_icon="📐", layout="wide"
+)
+
+# Layout atas: Judul di kiri, Visitor Counter di pojok kanan atas
+col_title, col_counter = st.columns([4, 1])
 
 with col_title:
     st.title("⚡ Footwear Material Nesting")
 
 with col_counter:
-    # Menggunakan HTML dengan align ke kanan agar pas di pojok kanan atas
     st.markdown(
         """
         <div style="text-align: right; padding-top: 15px;">
